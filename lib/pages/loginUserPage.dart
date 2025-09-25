@@ -1,20 +1,81 @@
-import 'package:delivery_miniproject/pages/loginRiderPage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_miniproject/pages/rceiveProductPage.dart';
 import 'package:delivery_miniproject/pages/registerPage.dart';
 import 'package:flutter/material.dart';
 
-class LoginUserPage extends StatelessWidget {
+class LoginUserPage extends StatefulWidget {
   const LoginUserPage({super.key});
 
   @override
+  State<LoginUserPage> createState() => _LoginUserPageState();
+}
+
+class _LoginUserPageState extends State<LoginUserPage> {
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
+
+  bool _isLoading = false;
+
+  /// ฟังก์ชัน Login (เฉพาะ User)
+  Future<void> login() async {
+    String phone = phoneController.text.trim();
+    String password = passwordController.text.trim();
+
+    if (phone.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("กรุณากรอกข้อมูลให้ครบ")));
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection("User")
+          .where('phone', isEqualTo: phone)
+          .where('password', isEqualTo: password)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("เข้าสู่ระบบสำเร็จ (ผู้ใช้ระบบ)")),
+        );
+        // ไปหน้ารับสินค้า
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ReceiveProductPage()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("เกิดข้อผิดพลาด: $e")));
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    double screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // ส่วน Header
+            // Header
             Container(
               width: double.infinity,
-              height: MediaQuery.of(context).size.height * 0.35,
+              height: screenHeight * 0.35,
               child: Stack(
                 children: [
                   Image.asset(
@@ -27,7 +88,7 @@ class LoginUserPage extends StatelessWidget {
                     top: 40,
                     left: 10,
                     child: IconButton(
-                      icon: Icon(
+                      icon: const Icon(
                         Icons.arrow_back,
                         color: Colors.white,
                         size: 28,
@@ -41,99 +102,27 @@ class LoginUserPage extends StatelessWidget {
               ),
             ),
 
-            // แถบ "ผู้ใช้ระบบ" และ "ไรเดอร์"
-            Container(
-              color: Colors.white,
-              padding: EdgeInsets.symmetric(
-                vertical: 2 * MediaQuery.of(context).size.height * 0.01,
-                horizontal: 30,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // ผู้ใช้ระบบ
-                  InkWell(
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LoginUserPage(),
-                        ),
-                      );
-                    },
-                    child: Column(
-                      children: [
-                        Text(
-                          "ผู้ใช้ระบบ",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: const Color.fromARGB(255, 0, 0, 0),
-                          ),
-                        ),
-                        Container(
-                          margin: EdgeInsets.only(top: 4),
-                          height: 2,
-                          width: 100,
-                          color: Colors.black, // เส้นใต้ active
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: 50),
-
-                  // ไรเดอร์
-                  InkWell(
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LoginRiderPage(),
-                        ),
-                      );
-                    },
-                    child: Column(
-                      children: [
-                        Text(
-                          "ไรเดอร์",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        Container(
-                          margin: EdgeInsets.only(top: 4),
-                          height: 2,
-                          width: 100,
-                          color: Colors.transparent,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            // Title
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: const Text(
+                "ล็อกอิน (ผู้ใช้ระบบ)",
+                style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
               ),
             ),
 
-            SizedBox(height: 0.03 * MediaQuery.of(context).size.height),
-
             // ฟอร์มล็อกอิน
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 30),
+              padding: const EdgeInsets.symmetric(horizontal: 30),
               child: Column(
                 children: [
-                  Text(
-                    "ล็อกอิน ",
-                    style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 0.03 * MediaQuery.of(context).size.height),
-
                   // เบอร์โทรศัพท์
                   TextField(
+                    controller: phoneController,
                     decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.phone),
+                      prefixIcon: const Icon(Icons.phone),
                       hintText: "เบอร์โทรศัพท์",
-                      hintStyle: TextStyle(fontSize: 18),
+                      hintStyle: const TextStyle(fontSize: 18),
                       filled: true,
                       fillColor: Colors.grey.shade200,
                       border: OutlineInputBorder(
@@ -142,15 +131,16 @@ class LoginUserPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  SizedBox(height: 0.020 * MediaQuery.of(context).size.height),
+                  SizedBox(height: 0.02 * screenHeight),
 
                   // รหัสผ่าน
                   TextField(
+                    controller: passwordController,
                     obscureText: true,
                     decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.lock),
+                      prefixIcon: const Icon(Icons.lock),
                       hintText: "รหัสผ่าน",
-                      hintStyle: TextStyle(fontSize: 18),
+                      hintStyle: const TextStyle(fontSize: 18),
                       filled: true,
                       fillColor: Colors.grey.shade200,
                       border: OutlineInputBorder(
@@ -160,39 +150,41 @@ class LoginUserPage extends StatelessWidget {
                     ),
                   ),
 
-                  SizedBox(height: 0.05 * MediaQuery.of(context).size.height),
+                  SizedBox(height: 0.05 * screenHeight),
 
                   // ปุ่มเข้าสู่ระบบ
                   SizedBox(
                     width: double.infinity,
-                    height: 0.07 * MediaQuery.of(context).size.height,
+                    height: 0.07 * screenHeight,
                     child: ElevatedButton(
+                      onPressed: _isLoading ? null : login,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFF303F9F),
+                        backgroundColor: const Color(0xFF303F9F),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      onPressed: () {},
-                      child: Text(
-                        "เข้าสู่ระบบ",
-                        style: TextStyle(
-                          fontSize: 20,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                              "เข้าสู่ระบบ",
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
-                  SizedBox(height: 0.01 * MediaQuery.of(context).size.height),
+                  const SizedBox(height: 10),
 
                   // ปุ่มสมัครสมาชิก
                   SizedBox(
                     width: double.infinity,
-                    height: 0.07 * MediaQuery.of(context).size.height,
+                    height: 0.07 * screenHeight,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFF8E9DFF),
+                        backgroundColor: const Color(0xFF8E9DFF),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -201,12 +193,11 @@ class LoginUserPage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) =>
-                                RegisterPage(), // หน้าเป้าหมาย
+                            builder: (context) => const RegisterPage(),
                           ),
                         );
                       },
-                      child: Text(
+                      child: const Text(
                         "สมัครสมาชิก",
                         style: TextStyle(
                           fontSize: 20,
