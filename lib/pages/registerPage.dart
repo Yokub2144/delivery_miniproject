@@ -94,13 +94,6 @@ class _SignUpPageState extends State<SignUpPage>
               title: const Text('ถ่ายรูปด้วยกล้อง'),
               onTap: () async {
                 Navigator.pop(ctx);
-                image = await picker.pickImage(source: ImageSource.gallery);
-                if (image != null) {
-                  log(image!.path.toString());
-                  setState(() {});
-                } else {
-                  log('No Image');
-                }
               },
             ),
           ],
