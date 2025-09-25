@@ -104,73 +104,6 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               ),
             ),
 
-            // แถบ "ผู้ใช้ระบบ" และ "ไรเดอร์"
-            Container(
-              color: Colors.white,
-              padding: EdgeInsets.symmetric(
-                vertical: 0.02 * screenHeight,
-                horizontal: 30,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // ผู้ใช้ระบบ
-                  InkWell(
-                    onTap: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => LoginUserPage(),
-                        ),
-                      );
-                    },
-                    child: Column(
-                      children: [
-                        Text(
-                          "ผู้ใช้ระบบ",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        Container(
-                          margin: EdgeInsets.only(top: 4),
-                          height: 2,
-                          width: 100,
-                          color: Colors.transparent,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(width: 50),
-
-                  // ไรเดอร์
-                  InkWell(
-                    onTap: () {},
-                    child: Column(
-                      children: [
-                        Text(
-                          "ไรเดอร์",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
-                        ),
-                        Container(
-                          margin: EdgeInsets.only(top: 4),
-                          height: 2,
-                          width: 100,
-                          color: Colors.black,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
             SizedBox(height: 0.03 * screenHeight),
 
             // ฟอร์มล็อกอิน
@@ -179,7 +112,7 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
               child: Column(
                 children: [
                   Text(
-                    "ล็อกอิน",
+                    "ล็อกอิน (ไรเดอร์)",
                     style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 0.03 * screenHeight),
