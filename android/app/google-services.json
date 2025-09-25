@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "287320676004",
+    "firebase_url": "https://delivery-miniproject-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "delivery-miniproject",
+    "storage_bucket": "delivery-miniproject.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:287320676004:android:cfb9b8935d8a581fcf3831",
+        "android_client_info": {
+          "package_name": "com.example.delivery_miniproject"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-xgTeXhN3LIdt5JV3s-K4UkGoEYkIWbg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
