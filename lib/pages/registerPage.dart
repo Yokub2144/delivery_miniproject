@@ -1,7 +1,11 @@
 import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_miniproject/pages/loginRiderPage.dart';
+import 'package:delivery_miniproject/pages/loginUserPage.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path_provider/path_provider.dart';
@@ -29,9 +33,10 @@ class _SignUpPageState extends State<SignUpPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final ImagePicker picker = ImagePicker();
-  XFile? pickedImage;
+  XFile? image;
   File? savedFile;
-  Image? image;
+  File? imgProfile;
+  File? imgCar;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -53,22 +58,10 @@ class _SignUpPageState extends State<SignUpPage>
     super.dispose();
   }
 
-  Future<String?> uploadImageToFirebase(XFile image, String phone) async {
-    try {
-      final storageRef = FirebaseStorage.instance.ref().child(
-        "images/$phone/${DateTime.now().millisecondsSinceEpoch}.jpg",
-      );
-      await storageRef.putFile(File(image.path));
-      String downloadURL = await storageRef.getDownloadURL();
-      log("✅ Upload success: $downloadURL");
-      return downloadURL;
-    } catch (e) {
-      log("Upload error: $e");
-      return null;
-    }
-  }
-
-  Future<void> _pickImage(BuildContext context) async {
+  Future<void> _pickImage(
+    BuildContext context, {
+    required bool isProfile,
+  }) async {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
@@ -79,13 +72,19 @@ class _SignUpPageState extends State<SignUpPage>
               title: const Text('เลือกจากแกลเลอรี'),
               onTap: () async {
                 Navigator.pop(ctx);
-                final XFile? image = await picker.pickImage(
-                  source: ImageSource.gallery,
-                );
+                final Directory tempDir =
+                    await getApplicationDocumentsDirectory();
+                image = await picker.pickImage(source: ImageSource.gallery);
                 if (image != null) {
-                  setState(() {
-                    pickedImage = image;
-                  });
+                  final File file = File('${tempDir.path}/${image!.name}');
+                  await image!.saveTo(file.path);
+                  if (isProfile) {
+                    imgProfile = file;
+                  } else {
+                    imgCar = file;
+                  }
+                  setState(() {});
+                  log(file.path);
                 }
               },
             ),
@@ -94,6 +93,20 @@ class _SignUpPageState extends State<SignUpPage>
               title: const Text('ถ่ายรูปด้วยกล้อง'),
               onTap: () async {
                 Navigator.pop(ctx);
+                final Directory tempDir =
+                    await getApplicationDocumentsDirectory();
+                image = await picker.pickImage(source: ImageSource.camera);
+                if (image != null) {
+                  final File file = File('${tempDir.path}/${image!.name}');
+                  await image!.saveTo(file.path);
+                  if (isProfile) {
+                    imgProfile = file;
+                  } else {
+                    imgCar = file;
+                  }
+                  setState(() {});
+                  log(file.path);
+                }
               },
             ),
           ],
@@ -108,7 +121,7 @@ class _SignUpPageState extends State<SignUpPage>
       child: Column(
         children: [
           InkWell(
-            onTap: () => _pickImage(context),
+            onTap: () => _pickImage(context, isProfile: true),
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
@@ -118,15 +131,16 @@ class _SignUpPageState extends State<SignUpPage>
               child: CircleAvatar(
                 radius: 70,
                 backgroundColor: Colors.white,
-                backgroundImage: pickedImage != null
-                    ? FileImage(File(pickedImage!.path))
+                backgroundImage: imgProfile != null
+                    ? FileImage(imgProfile!)
                     : null,
-                child: pickedImage == null
+                child: imgProfile == null
                     ? Icon(Icons.camera_alt, color: Colors.grey[700])
                     : null,
               ),
             ),
           ),
+
           const SizedBox(height: 20),
           _buildTextField(Icons.person, "ชื่อ", controller: nameController),
           const SizedBox(height: 15),
@@ -146,6 +160,43 @@ class _SignUpPageState extends State<SignUpPage>
           const SizedBox(height: 15),
           _buildTextField(Icons.home, "ที่อยู่", controller: addressController),
           const SizedBox(height: 15),
+          if (!isUser) ...[
+            SizedBox(
+              width: 360,
+              child: TextField(
+                readOnly: true,
+                onTap: () => _pickImage(context, isProfile: false),
+                decoration: InputDecoration(
+                  prefixIcon: Icon(Icons.file_upload),
+                  hintText: "กรุณาเลือกรูปรถ",
+                  filled: true,
+                  fillColor: Colors.grey[200],
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(50),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // แสดงรูปถ้ามี
+            if (imgCar != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.file(
+                  imgCar!,
+                  width: 200,
+                  height: 150,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            const SizedBox(height: 15),
+            _buildTextField(
+              Icons.motorcycle,
+              "ทะเบียนรถ",
+              controller: TextEditingController(),
+            ),
+          ],
           Text("คุณมีบัญชีแล้ว?", style: TextStyle(color: Colors.grey[600])),
           const SizedBox(height: 10),
           SizedBox(
@@ -162,32 +213,40 @@ class _SignUpPageState extends State<SignUpPage>
                   return;
                 }
 
-                String? imageUrl;
                 String phone = phoneController.text;
-
-                if (pickedImage != null) {
-                  imageUrl = await uploadImageToFirebase(pickedImage!, phone);
-                }
-
-                var data = {
-                  'name': nameController.text,
-                  'phone': phone,
-                  'password': passwordController.text,
-                  'address': addressController.text,
-                  'imageUrl': imageUrl ?? "",
-                  'createdAt': FieldValue.serverTimestamp(),
-                };
 
                 var db = FirebaseFirestore.instance;
                 try {
                   if (isUser) {
+                    var data = {
+                      'name': nameController.text,
+                      'phone': phone,
+                      'password': passwordController.text,
+                      'address': addressController.text,
+                      'imageUrl': savedFile?.path ?? '',
+                      'createdAt': FieldValue.serverTimestamp(),
+                    };
                     await db.collection('User').doc(phone).set(data);
                   } else {
+                    var data = {
+                      'name': nameController.text,
+                      'phone': phone,
+                      'password': passwordController.text,
+                      'address': addressController.text,
+                      'imageUrl': savedFile?.path ?? '',
+                      'carImageUrl': imgCar?.path ?? '',
+                      'createdAt': FieldValue.serverTimestamp(),
+                    };
                     await db.collection('Rider').doc(phone).set(data);
                   }
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("สมัครสมาชิกสำเร็จ")),
                   );
+                  if (isUser) {
+                    Get.to(LoginUserPage());
+                  } else {
+                    Get.to(LoginRiderPage());
+                  }
                 } catch (e) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text("เกิดข้อผิดพลาด: ${e.toString()}")),
