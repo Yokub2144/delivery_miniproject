@@ -1,14 +1,36 @@
+import 'package:delivery_miniproject/pages/EditRiderProfilePage.dart';
+import 'package:delivery_miniproject/pages/viewRiderProfilePage.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'package:delivery_miniproject/pages/loginRiderPage.dart';
 
 class RiderMainPage extends StatefulWidget {
-  const RiderMainPage({super.key});
+  final String riderId;
+
+  const RiderMainPage({super.key, required this.riderId});
 
   @override
   State<RiderMainPage> createState() => _RiderMainPageState();
 }
 
 class _RiderMainPageState extends State<RiderMainPage> {
-  // A helper widget for the order card to make the code cleaner and reusable.
+  final Stream<QuerySnapshot> _ordersStream = FirebaseFirestore.instance
+      .collection('orders')
+      .snapshots();
+
+  late final Stream<DocumentSnapshot> _riderStream;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _riderStream = FirebaseFirestore.instance
+        .collection('Rider') // <-- Collection ที่คุณใช้ตอนสมัคร ('Rider')
+        .doc(widget.riderId) // <-- ID (เบอร์โทร) ของไรเดอร์
+        .snapshots();
+  }
+
   Widget _buildOrderCard({
     required String firstItem,
     required String secondItem,
@@ -20,7 +42,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: const Color(0xFFE6E6FA), // Light lavender color
+        color: const Color(0xFFE6E6FA),
         borderRadius: BorderRadius.circular(20.0),
         boxShadow: [
           BoxShadow(
@@ -34,7 +56,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top section with items and driver profile
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -75,7 +96,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
                 ),
               ),
               const SizedBox(width: 16),
-              // Driver profile on the right
               Container(
                 padding: const EdgeInsets.symmetric(
                   vertical: 8,
@@ -91,7 +111,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: const Color(0xFFD4AF37), // Gold color
+                          color: const Color(0xFFD4AF37),
                           width: 2,
                         ),
                       ),
@@ -117,10 +137,8 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ],
           ),
           const SizedBox(height: 16),
-          // Divider line
           Container(height: 1.0, color: Colors.black26),
           const SizedBox(height: 16),
-          // Pickup address section
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -141,7 +159,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ],
           ),
           const SizedBox(height: 16),
-          // Destination address section
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -162,14 +179,11 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ],
           ),
           const SizedBox(height: 24),
-          // 'Accept Order' button
           Center(
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  // Handle button press
-                },
+                onPressed: () {},
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6A5ACD),
                   padding: const EdgeInsets.symmetric(vertical: 16.0),
@@ -213,11 +227,38 @@ class _RiderMainPageState extends State<RiderMainPage> {
                   ),
                 ],
               ),
-              Row(
-                children: const [
-                  Icon(Icons.wifi, color: Colors.black),
-                  SizedBox(width: 8),
-                  Icon(Icons.battery_full, color: Colors.black),
+
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, color: Colors.black),
+                onSelected: (String value) {
+                  if (value == 'profile') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ViewRiderProfilePage(
+                          riderId: widget.riderId, // ส่ง ID ไปยังหน้าดูโปรไฟล์
+                        ),
+                      ),
+                    );
+                  } else if (value == 'logout') {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LoginRiderPage(),
+                      ),
+                      (Route<dynamic> route) => false,
+                    );
+                  }
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem<String>(
+                    value: 'profile',
+                    child: Text('ดูโปรไฟล์'),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'logout',
+                    child: Text('ออกจากระบบ'),
+                  ),
                 ],
               ),
             ],
@@ -228,54 +269,88 @@ class _RiderMainPageState extends State<RiderMainPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // User profile section
-            Container(
-              margin: const EdgeInsets.all(16.0),
-              padding: const EdgeInsets.symmetric(vertical: 24.0),
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE6E6FA),
-                borderRadius: BorderRadius.circular(20.0),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.2),
-                    spreadRadius: 2,
-                    blurRadius: 5,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFFD4AF37),
-                        width: 4,
+            StreamBuilder<DocumentSnapshot>(
+              stream: _riderStream,
+              builder:
+                  (
+                    BuildContext context,
+                    AsyncSnapshot<DocumentSnapshot> snapshot,
+                  ) {
+                    if (snapshot.hasError) {
+                      return const Center(
+                        child: Text('มีข้อผิดพลาดในการโหลดโปรไฟล์'),
+                      );
+                    }
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (!snapshot.hasData || !snapshot.data!.exists) {
+                      return const Center(child: Text('ไม่พบข้อมูลโปรไฟล์'));
+                    }
+
+                    Map<String, dynamic> data =
+                        snapshot.data!.data() as Map<String, dynamic>;
+
+                    String riderName = data['name'] ?? 'ไม่มีชื่อ';
+                    String carReg = data['carRegistration'] ?? 'ไม่มีทะเบียน';
+
+                    String profileImageUrl =
+                        data['imageUrl'] ??
+                        'https://placehold.co/100x100/A9A9A9/FFFFFF?text=A';
+
+                    return Container(
+                      margin: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6E6FA),
+                        borderRadius: BorderRadius.circular(20.0),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.2),
+                            spreadRadius: 2,
+                            blurRadius: 5,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
                       ),
-                    ),
-                    child: const CircleAvatar(
-                      radius: 35,
-                      backgroundImage: NetworkImage(
-                        'https://placehold.co/100x100/A9A9A9/FFFFFF?text=A',
+                      child: Column(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFFD4AF37),
+                                width: 4,
+                              ),
+                            ),
+                            child: CircleAvatar(
+                              radius: 35,
+                              backgroundImage: NetworkImage(profileImageUrl),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            riderName,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            carReg,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'คุณสมชาย',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const Text(
-                    'โคบ 1234',
-                    style: TextStyle(fontSize: 14, color: Colors.black54),
-                  ),
-                ],
-              ),
+                    );
+                  },
             ),
+
             const SizedBox(height: 16),
-            // "รายการออเดอร์" heading
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: Text(
@@ -284,24 +359,44 @@ class _RiderMainPageState extends State<RiderMainPage> {
               ),
             ),
             const SizedBox(height: 16),
-            // Order cards
-            _buildOrderCard(
-              firstItem: 'Iphone 13',
-              secondItem: 'โน้ตบุ๊คเกมมิ่ง',
-              pickupAddress:
-                  '456 หมู่12 ต.บ้านดินดำ อ.กันทริชัย จ.มหาสารคาม 44150',
-              destinationAddress:
-                  '67/8 หมู่8 ต.ขามเรียง อ.กันทริชัย จ.มหาสารคาม 44150',
-              driverName: 'คุณลภิพงศ์ ส่งดี',
-            ),
-            _buildOrderCard(
-              firstItem: 'Ps5 slim',
-              secondItem: 'โน้ตบุ๊คเกมมิ่ง',
-              pickupAddress:
-                  '123 หมู่12 ต.ท่าขอนยาง อ.กันทริชัย จ.มหาสารคาม 44150',
-              destinationAddress:
-                  '21/22 หมู่12 ต.ขามเรียง อ.กันทริชัย จ.มหาสารคาม 44150',
-              driverName: 'Aof',
+
+            StreamBuilder<QuerySnapshot>(
+              stream: _ordersStream,
+              builder:
+                  (
+                    BuildContext context,
+                    AsyncSnapshot<QuerySnapshot> snapshot,
+                  ) {
+                    if (snapshot.hasError) {
+                      return const Center(child: Text('มีบางอย่างผิดพลาด'));
+                    }
+
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (snapshot.data!.docs.isEmpty) {
+                      return const Center(child: Text('ไม่มีออเดอร์ในขณะนี้'));
+                    }
+
+                    return Column(
+                      children: snapshot.data!.docs.map((
+                        DocumentSnapshot document,
+                      ) {
+                        Map<String, dynamic> data =
+                            document.data()! as Map<String, dynamic>;
+
+                        return _buildOrderCard(
+                          firstItem: data['firstItem'] ?? 'ไม่มีข้อมูล',
+                          secondItem: data['secondItem'] ?? 'ไม่มีข้อมูล',
+                          pickupAddress: data['pickupAddress'] ?? 'ไม่มีข้อมูล',
+                          destinationAddress:
+                              data['destinationAddress'] ?? 'ไม่มีข้อมูล',
+                          driverName: data['customerName'] ?? 'ไม่มีข้อมูล',
+                        );
+                      }).toList(),
+                    );
+                  },
             ),
           ],
         ),

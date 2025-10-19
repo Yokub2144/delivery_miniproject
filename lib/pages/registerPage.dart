@@ -41,6 +41,7 @@ class _SignUpPageState extends State<SignUpPage>
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController addressController = TextEditingController();
+  final TextEditingController carRegController = TextEditingController();
 
   @override
   void initState() {
@@ -194,7 +195,7 @@ class _SignUpPageState extends State<SignUpPage>
             _buildTextField(
               Icons.motorcycle,
               "ทะเบียนรถ",
-              controller: TextEditingController(),
+              controller: carRegController,
             ),
           ],
           Text("คุณมีบัญชีแล้ว?", style: TextStyle(color: Colors.grey[600])),
@@ -223,6 +224,7 @@ class _SignUpPageState extends State<SignUpPage>
                       'phone': phone,
                       'password': passwordController.text,
                       'address': addressController.text,
+                      'carRegistration': carRegController.text,
                       'imageUrl': savedFile?.path ?? '',
                       'createdAt': FieldValue.serverTimestamp(),
                     };
@@ -234,6 +236,7 @@ class _SignUpPageState extends State<SignUpPage>
                       'password': passwordController.text,
                       'address': addressController.text,
                       'imageUrl': savedFile?.path ?? '',
+                      'carRegistration': carRegController.text,
                       'carImageUrl': imgCar?.path ?? '',
                       'createdAt': FieldValue.serverTimestamp(),
                     };
