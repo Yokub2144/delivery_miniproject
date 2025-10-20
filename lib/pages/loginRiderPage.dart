@@ -47,8 +47,11 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
 
         // ไปหน้ารับ Order
         Navigator.pushReplacement(
+          //
           context,
-          MaterialPageRoute(builder: (context) => const RiderMainPage()),
+          MaterialPageRoute(
+            builder: (context) => RiderMainPage(riderId: phone),
+          ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

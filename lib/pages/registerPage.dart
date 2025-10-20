@@ -263,7 +263,12 @@ class _SignUpPageState extends State<SignUpPage>
                       'phone': phone,
                       'password': passwordController.text,
                       'address': addressController.text,
+<<<<<<< HEAD
                       'imageUrl': imgProfileUrl ?? '',
+=======
+                      'carRegistration': carRegController.text,
+                      'imageUrl': savedFile?.path ?? '',
+>>>>>>> af6b20bebc0744ae8c08edccc880371c05862df5
                       'createdAt': FieldValue.serverTimestamp(),
                     };
                     await db.collection('User').doc(phone).set(data);
@@ -273,9 +278,15 @@ class _SignUpPageState extends State<SignUpPage>
                       'phone': phone,
                       'password': passwordController.text,
                       'address': addressController.text,
+<<<<<<< HEAD
                       'imageUrl': imgProfileUrl ?? '',
                       'carImageUrl': imgCarUrl ?? '',
 
+=======
+                      'imageUrl': savedFile?.path ?? '',
+                      'carRegistration': carRegController.text,
+                      'carImageUrl': imgCar?.path ?? '',
+>>>>>>> af6b20bebc0744ae8c08edccc880371c05862df5
                       'createdAt': FieldValue.serverTimestamp(),
                     };
                     await db.collection('Rider').doc(phone).set(data);
