@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:delivery_miniproject/pages/editRiderProfilePage.dart'; // Import หน้าแก้ไข
+import 'package:delivery_miniproject/pages/rider/editRiderProfilePage.dart'; // Import หน้าแก้ไข
 
 class ViewRiderProfilePage extends StatefulWidget {
   final String riderId;

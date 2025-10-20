@@ -1,12 +1,6 @@
-<<<<<<< HEAD:lib/pages/riderMainPage.dart
-import 'package:delivery_miniproject/pages/viewRiderProfilePage.dart';
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-=======
 // ✨ Imports (เหมือนเดิม, ตรวจสอบ path ให้ถูกต้อง)
 import 'package:delivery_miniproject/pages/rider/EditRiderProfilePage.dart';
 import 'package:delivery_miniproject/pages/rider/PickupDetailPage%20.dart';
->>>>>>> ed346d717ee9bfd9dd6400d596871e3572080422:lib/pages/rider/riderMainPage.dart
 
 import 'package:delivery_miniproject/pages/rider/viewRiderProfilePage.dart';
 import 'package:flutter/material.dart';
