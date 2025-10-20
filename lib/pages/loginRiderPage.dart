@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_miniproject/pages/loginUserPage.dart';
 import 'package:delivery_miniproject/pages/registerPage.dart';
 import 'package:delivery_miniproject/pages/riderMainPage.dart';
-import 'package:delivery_miniproject/pages/sendProductPage.dart';
+import 'package:delivery_miniproject/pages/user/sendProductPage.dart';
 import 'package:flutter/material.dart';
 
 class LoginRiderPage extends StatefulWidget {

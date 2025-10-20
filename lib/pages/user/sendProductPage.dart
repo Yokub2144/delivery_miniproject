@@ -1,5 +1,9 @@
-import 'package:delivery_miniproject/pages/rceiveProductPage.dart';
+import 'package:delivery_miniproject/pages/loginUserPage.dart';
+import 'package:delivery_miniproject/pages/user/profilePage.dart';
+import 'package:delivery_miniproject/pages/user/rceiveProductPage.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:get/get_core/src/get_main.dart';
 
 class SendProductPage extends StatefulWidget {
   const SendProductPage({super.key});
@@ -12,10 +16,22 @@ class _SendProductPageState extends State<SendProductPage> {
   @override
   int _currentIndex = 1; // เริ่มที่ส่งสินค้า
 
+  void _onMenuItemSelected(BuildContext context, String value) {
+    switch (value) {
+      case 'profile':
+        Get.to(Profilepage());
+        break;
+      case 'logout':
+        Get.to(LoginUserPage());
+        break;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         centerTitle: true,
         title: const Text(
           'ส่งสินค้า',
@@ -23,6 +39,24 @@ class _SendProductPageState extends State<SendProductPage> {
         ),
         backgroundColor: Colors.deepPurple[400],
         elevation: 0,
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (item) => _onMenuItemSelected(context, item),
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'profile',
+                child: Text('โปรไฟล์'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Text('ออกจากระบบ'),
+              ),
+            ],
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            color: Colors.white,
+          ),
+          const SizedBox(width: 8), // เพิ่มระยะห่างด้านขวาเล็กน้อย
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),

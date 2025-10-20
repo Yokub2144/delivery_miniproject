@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:delivery_miniproject/pages/rceiveProductPage.dart';
+import 'package:delivery_miniproject/pages/user/rceiveProductPage.dart';
 import 'package:delivery_miniproject/pages/registerPage.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 
 class LoginUserPage extends StatefulWidget {
   const LoginUserPage({super.key});
@@ -15,6 +17,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
   final TextEditingController passwordController = TextEditingController();
 
   bool _isLoading = false;
+  GetStorage box = GetStorage();
 
   /// ฟังก์ชัน Login (เฉพาะ User)
   Future<void> login() async {
@@ -43,11 +46,8 @@ class _LoginUserPageState extends State<LoginUserPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("เข้าสู่ระบบสำเร็จ (ผู้ใช้ระบบ)")),
         );
-        // ไปหน้ารับสินค้า
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const ReceiveProductPage()),
-        );
+        box.write('phone', phone);
+        Get.to(ReceiveProductPage());
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง")),

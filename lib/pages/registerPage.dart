@@ -1,6 +1,8 @@
 import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:path/path.dart' as p;
+import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:delivery_miniproject/pages/loginRiderPage.dart';
 import 'package:delivery_miniproject/pages/loginUserPage.dart';
 import 'package:flutter/material.dart';
@@ -33,10 +35,17 @@ class _SignUpPageState extends State<SignUpPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final ImagePicker picker = ImagePicker();
+  final cloudinary = CloudinaryPublic(
+    'dzicj4dci',
+    'flutter_unsigned',
+    cache: false,
+  );
   XFile? image;
   File? savedFile;
   File? imgProfile;
   File? imgCar;
+  String? imgProfileUrl; // จากเดิม File? imgProfile
+  String? imgCarUrl;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -72,20 +81,7 @@ class _SignUpPageState extends State<SignUpPage>
               title: const Text('เลือกจากแกลเลอรี'),
               onTap: () async {
                 Navigator.pop(ctx);
-                final Directory tempDir =
-                    await getApplicationDocumentsDirectory();
-                image = await picker.pickImage(source: ImageSource.gallery);
-                if (image != null) {
-                  final File file = File('${tempDir.path}/${image!.name}');
-                  await image!.saveTo(file.path);
-                  if (isProfile) {
-                    imgProfile = file;
-                  } else {
-                    imgCar = file;
-                  }
-                  setState(() {});
-                  log(file.path);
-                }
+                _pickAndUpload(ImageSource.gallery, isProfile);
               },
             ),
             ListTile(
@@ -93,26 +89,67 @@ class _SignUpPageState extends State<SignUpPage>
               title: const Text('ถ่ายรูปด้วยกล้อง'),
               onTap: () async {
                 Navigator.pop(ctx);
-                final Directory tempDir =
-                    await getApplicationDocumentsDirectory();
-                image = await picker.pickImage(source: ImageSource.camera);
-                if (image != null) {
-                  final File file = File('${tempDir.path}/${image!.name}');
-                  await image!.saveTo(file.path);
-                  if (isProfile) {
-                    imgProfile = file;
-                  } else {
-                    imgCar = file;
-                  }
-                  setState(() {});
-                  log(file.path);
-                }
+                _pickAndUpload(ImageSource.camera, isProfile);
               },
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _pickAndUpload(ImageSource source, bool isProfile) async {
+    // --- ส่วนเลือกรูป (เหมือนโค้ดเดิมของคุณ) ---
+    final XFile? image = await picker.pickImage(source: source);
+
+    if (image == null) {
+      log('ผู้ใช้ยกเลิกการเลือกรูป');
+      return; // ออกจากฟังก์ชันถ้าไม่ได้เลือกรูป
+    }
+
+    final Directory tempDir = await getApplicationDocumentsDirectory();
+
+    // 1. รับนามสกุลไฟล์ (.jpg, .png)
+    final String fileExtension = p.extension(image.name);
+
+    // 2. สร้างชื่อไฟล์ใหม่ที่ปลอดภัย (ใช้เวลาปัจจุบัน กันชื่อซ้ำ)
+    final String newFileName =
+        '${DateTime.now().millisecondsSinceEpoch}$fileExtension';
+
+    // 3. สร้าง File object ด้วยชื่อใหม่
+    final File file = File('${tempDir.path}/$newFileName');
+
+    // 4. เซฟไฟล์ XFile (image) ไปยัง path ใหม่
+    await image.saveTo(file.path);
+    // --- ส่วนอัปโหลดไป Cloudinary (ส่วนที่เพิ่มใหม่) ---
+    log('กำลังอัปโหลดรูปไป Cloudinary...');
+    // (คุณอาจจะอยากแสดง Loading indicator ตรงนี้)
+
+    try {
+      final CloudinaryResponse response = await cloudinary.uploadFile(
+        CloudinaryFile.fromFile(
+          file.path,
+          resourceType: CloudinaryResourceType.Image,
+        ),
+      );
+
+      // อัปโหลดสำเร็จ!
+      log('อัปโหลดสำเร็จ: ${response.secureUrl}');
+
+      // 8. เก็บ Secure URL ที่ได้มา แทนการเก็บ File
+      setState(() {
+        if (isProfile) {
+          imgProfileUrl = response.secureUrl; // เก็บ URL
+        } else {
+          imgCarUrl = response.secureUrl; // เก็บ URL
+        }
+      });
+    } catch (e) {
+      log('อัปโหลดล้มเหลว: $e');
+      // (ควรแสดงข้อความ Error ให้ผู้ใช้รู้)
+    }
+
+    // (ซ่อน Loading indicator)
   }
 
   Widget buildForm({required bool isUser}) {
@@ -131,10 +168,12 @@ class _SignUpPageState extends State<SignUpPage>
               child: CircleAvatar(
                 radius: 70,
                 backgroundColor: Colors.white,
-                backgroundImage: imgProfile != null
-                    ? FileImage(imgProfile!)
+                backgroundImage: imgProfileUrl != null
+                    ? NetworkImage(imgProfileUrl!) // ใช้อันนี้
                     : null,
-                child: imgProfile == null
+                child:
+                    imgProfileUrl ==
+                        null // ใช้อันนี้
                     ? Icon(Icons.camera_alt, color: Colors.grey[700])
                     : null,
               ),
@@ -180,11 +219,11 @@ class _SignUpPageState extends State<SignUpPage>
             ),
             const SizedBox(height: 10),
             // แสดงรูปถ้ามี
-            if (imgCar != null)
+            if (imgCarUrl != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: Image.file(
-                  imgCar!,
+                child: Image.network(
+                  imgCarUrl!,
                   width: 200,
                   height: 150,
                   fit: BoxFit.cover,
@@ -223,7 +262,7 @@ class _SignUpPageState extends State<SignUpPage>
                       'phone': phone,
                       'password': passwordController.text,
                       'address': addressController.text,
-                      'imageUrl': savedFile?.path ?? '',
+                      'imageUrl': imgProfileUrl ?? '',
                       'createdAt': FieldValue.serverTimestamp(),
                     };
                     await db.collection('User').doc(phone).set(data);
@@ -233,8 +272,8 @@ class _SignUpPageState extends State<SignUpPage>
                       'phone': phone,
                       'password': passwordController.text,
                       'address': addressController.text,
-                      'imageUrl': savedFile?.path ?? '',
-                      'carImageUrl': imgCar?.path ?? '',
+                      'imageUrl': imgProfileUrl ?? '',
+                      'carImageUrl': imgCarUrl ?? '',
                       'createdAt': FieldValue.serverTimestamp(),
                     };
                     await db.collection('Rider').doc(phone).set(data);
