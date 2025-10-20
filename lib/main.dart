@@ -2,6 +2,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_miniproject/config/default_theme.dart';
 import 'package:delivery_miniproject/firebase_options.dart';
 import 'package:delivery_miniproject/pages/loadingPage.dart';
+<<<<<<< HEAD
+=======
+import 'package:delivery_miniproject/pages/user/rceiveProductPage.dart';
+import 'package:delivery_miniproject/pages/registerPage.dart';
+import 'package:delivery_miniproject/pages/user/sendProductPage.dart';
+>>>>>>> ed346d717ee9bfd9dd6400d596871e3572080422
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
