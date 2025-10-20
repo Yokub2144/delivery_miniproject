@@ -73,7 +73,7 @@ class _LoginUserPageState extends State<LoginUserPage> {
         child: Column(
           children: [
             // Header
-            Container(
+            SizedBox(
               width: double.infinity,
               height: screenHeight * 0.35,
               child: Stack(

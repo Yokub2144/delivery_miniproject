@@ -116,14 +116,6 @@ class _LoadingPageState extends State<LoadingPage> {
                         ),
                       );
                     },
-                    child: Text(
-                      "User",
-                      style: TextStyle(
-                        fontSize: isTablet ? 20 : 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color(0xFF303F9F),
                       shape: RoundedRectangleBorder(
@@ -133,6 +125,14 @@ class _LoadingPageState extends State<LoadingPage> {
                         vertical: screenHeight * 0.02,
                       ),
                       elevation: 5,
+                    ),
+                    child: Text(
+                      "User",
+                      style: TextStyle(
+                        fontSize: isTablet ? 20 : 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -152,14 +152,6 @@ class _LoadingPageState extends State<LoadingPage> {
                         ),
                       );
                     },
-                    child: Text(
-                      "Rider",
-                      style: TextStyle(
-                        fontSize: isTablet ? 20 : 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color(0xFF303F9F),
                       shape: RoundedRectangleBorder(
@@ -169,6 +161,14 @@ class _LoadingPageState extends State<LoadingPage> {
                         vertical: screenHeight * 0.02,
                       ),
                       elevation: 5,
+                    ),
+                    child: Text(
+                      "Rider",
+                      style: TextStyle(
+                        fontSize: isTablet ? 20 : 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),

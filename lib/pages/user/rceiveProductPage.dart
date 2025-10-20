@@ -13,7 +13,7 @@ class ReceiveProductPage extends StatefulWidget {
 }
 
 class _ReceiveProductPageState extends State<ReceiveProductPage> {
-  int _currentIndex = 0; // 0 = รับสินค้า, 1 = ส่งสินค้า
+  final int _currentIndex = 0; // 0 = รับสินค้า, 1 = ส่งสินค้า
   void _onMenuItemSelected(BuildContext context, String value) {
     switch (value) {
       case 'profile':

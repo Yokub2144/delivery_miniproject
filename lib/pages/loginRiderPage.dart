@@ -78,7 +78,7 @@ class _LoginRiderPageState extends State<LoginRiderPage> {
         child: Column(
           children: [
             // Header
-            Container(
+            SizedBox(
               width: double.infinity,
               height: screenHeight * 0.35,
               child: Stack(

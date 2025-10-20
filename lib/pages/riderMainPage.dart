@@ -1,4 +1,3 @@
-import 'package:delivery_miniproject/pages/EditRiderProfilePage.dart';
 import 'package:delivery_miniproject/pages/viewRiderProfilePage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

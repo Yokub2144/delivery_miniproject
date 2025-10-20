@@ -2,10 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_miniproject/config/default_theme.dart';
 import 'package:delivery_miniproject/firebase_options.dart';
 import 'package:delivery_miniproject/pages/loadingPage.dart';
-import 'package:delivery_miniproject/pages/user/rceiveProductPage.dart';
-import 'package:delivery_miniproject/pages/registerPage.dart';
-import 'package:delivery_miniproject/pages/riderMainPage.dart';
-import 'package:delivery_miniproject/pages/user/sendProductPage.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';

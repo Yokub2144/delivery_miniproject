@@ -14,7 +14,7 @@ class Profilepage extends StatefulWidget {
 }
 
 class _ProfilepageState extends State<Profilepage> {
-  int _currentIndex = 0;
+  final int _currentIndex = 0;
   GetStorage box = GetStorage();
   String? phone;
   var userData;

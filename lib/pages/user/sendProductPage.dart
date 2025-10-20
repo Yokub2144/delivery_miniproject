@@ -3,7 +3,6 @@ import 'package:delivery_miniproject/pages/user/profilePage.dart';
 import 'package:delivery_miniproject/pages/user/rceiveProductPage.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get/get_core/src/get_main.dart';
 
 class SendProductPage extends StatefulWidget {
   const SendProductPage({super.key});
