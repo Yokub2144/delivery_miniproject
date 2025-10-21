@@ -1,15 +1,14 @@
 // ✨ Imports (เหมือนเดิม, ตรวจสอบ path ให้ถูกต้อง)
 import 'package:delivery_miniproject/pages/rider/EditRiderProfilePage.dart';
 import 'package:delivery_miniproject/pages/rider/PickupDetailPage%20.dart';
-
 import 'package:delivery_miniproject/pages/rider/viewRiderProfilePage.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // ยังคง import ไว้เผื่อใช้ภายหลัง
-import 'package:get/get.dart'; // Import Get
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:get/get.dart';
 import 'package:delivery_miniproject/pages/loginRiderPage.dart';
 
 class RiderMainPage extends StatefulWidget {
-  final String riderId; // ยังคงรับ riderId ไว้สำหรับส่วน Profile
+  final String riderId;
 
   const RiderMainPage({super.key, required this.riderId});
 
@@ -18,43 +17,37 @@ class RiderMainPage extends StatefulWidget {
 }
 
 class _RiderMainPageState extends State<RiderMainPage> {
-  // ✨ Comment out or remove stream for now
-  // final Stream<QuerySnapshot> _ordersStream = FirebaseFirestore.instance
-  //     .collection('orders')
-  //     .snapshots();
-
   late final Stream<DocumentSnapshot> _riderStream;
 
   @override
   void initState() {
     super.initState();
-    // Stream สำหรับ Profile ยังคงทำงานเหมือนเดิม
     _riderStream = FirebaseFirestore.instance
         .collection('Rider')
         .doc(widget.riderId)
         .snapshots();
   }
 
-  // ✨ ฟังก์ชัน _buildOrderCard (ปรับ UI ตามรูป)
+  // ✨ ฟังก์ชัน _buildOrderCard (เพิ่ม riderId parameter)
   Widget _buildOrderCard({
-    required String orderId, // ยังคงรับ parameter ไว้
+    required String orderId,
     required String firstItem,
     required String secondItem,
     required String pickupAddress,
     required String destinationAddress,
     required String customerName,
-    required String customerPhone, // เก็บไว้เผื่อใช้ส่งไปหน้า Pickup
+    required String customerPhone,
     required String customerImageUrl,
-    required String pickupLat, // เก็บไว้เผื่อใช้ส่งไปหน้า Pickup
-    required String pickupLon, // เก็บไว้เผื่อใช้ส่งไปหน้า Pickup
-    required String destinationLat, // เก็บไว้เผื่อใช้ส่งไปหน้า Pickup
-    required String destinationLon, // เก็บไว้เผื่อใช้ส่งไปหน้า Pickup
+    required String pickupLat,
+    required String pickupLon,
+    required String destinationLat,
+    required String destinationLon,
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: const Color(0xFFE6E6FA), // สีม่วงอ่อน
+        color: const Color(0xFFE6E6FA),
         borderRadius: BorderRadius.circular(20.0),
         boxShadow: [
           BoxShadow(
@@ -68,11 +61,9 @@ class _RiderMainPageState extends State<RiderMainPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section 1: Items and Customer Info
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Left Side: Items
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,7 +103,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
                 ),
               ),
               const SizedBox(width: 16),
-              // Right Side: Customer
               Container(
                 padding: const EdgeInsets.symmetric(
                   vertical: 8,
@@ -132,7 +122,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                           (customerImageUrl.isNotEmpty &&
                               customerImageUrl.startsWith('http'))
                           ? NetworkImage(customerImageUrl)
-                          : null, // ใช้ NetworkImage ถ้า URL ถูกต้อง
+                          : null,
                       child:
                           (customerImageUrl.isEmpty ||
                               !customerImageUrl.startsWith('http'))
@@ -140,7 +130,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                               Icons.person,
                               size: 30,
                               color: Colors.grey.shade600,
-                            ) // Placeholder
+                            )
                           : null,
                     ),
                     const SizedBox(height: 4),
@@ -159,10 +149,8 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ],
           ),
           const SizedBox(height: 16),
-          // Divider
           Container(height: 1.0, color: Colors.black26.withOpacity(0.2)),
           const SizedBox(height: 16),
-          // Pickup Address
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -191,7 +179,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ],
           ),
           const SizedBox(height: 12),
-          // Destination Address
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -220,15 +207,15 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ],
           ),
           const SizedBox(height: 24),
-          // Accept Button
           Center(
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () {
+                  // ✨ ส่ง riderId ไปด้วย
                   Get.to(
                     () => PickupDetailPage(
-                      orderId: orderId, // ส่ง ID ที่ได้รับมา
+                      orderId: orderId,
                       customerName: customerName,
                       customerPhone: customerPhone,
                       pickupAddress: pickupAddress,
@@ -237,6 +224,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                       firstItem: firstItem,
                       secondItem: secondItem,
                       destinationAddress: destinationAddress,
+                      riderId: widget.riderId, // ✨ เพิ่มบรรทัดนี้
                     ),
                   );
                 },
@@ -324,7 +312,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Rider Profile Section (Uses StreamBuilder - Remains the same) ---
             StreamBuilder<DocumentSnapshot>(
               stream: _riderStream,
               builder:
@@ -332,7 +319,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
                     BuildContext context,
                     AsyncSnapshot<DocumentSnapshot> snapshot,
                   ) {
-                    // (โค้ดแสดงโปรไฟล์ไรเดอร์เหมือนเดิม)
                     if (snapshot.hasError) {
                       return const Center(
                         child: Padding(
@@ -364,8 +350,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                         snapshot.data!.data() as Map<String, dynamic>;
                     String riderName = data['name'] ?? 'ไม่มีชื่อ';
                     String carReg = data['carRegistration'] ?? 'ไม่มีทะเบียน';
-                    String profileImageUrl =
-                        data['imageUrl'] ?? ''; // Get the URL
+                    String profileImageUrl = data['imageUrl'] ?? '';
 
                     return Container(
                       margin: const EdgeInsets.all(16.0),
@@ -389,14 +374,13 @@ class _RiderMainPageState extends State<RiderMainPage> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: const Color(0xFFD4AF37), // Gold border
+                                color: const Color(0xFFD4AF37),
                                 width: 4,
                               ),
                             ),
                             child: CircleAvatar(
                               radius: 35,
                               backgroundColor: Colors.grey.shade300,
-                              // Use NetworkImage if URL is valid, otherwise show placeholder
                               backgroundImage:
                                   (profileImageUrl.isNotEmpty &&
                                       profileImageUrl.startsWith('http'))
@@ -409,7 +393,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                                       Icons.person,
                                       size: 40,
                                       color: Colors.grey.shade600,
-                                    ) // Placeholder Icon
+                                    )
                                   : null,
                             ),
                           ),
@@ -434,7 +418,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
                   },
             ),
             const SizedBox(height: 16),
-            // --- "รายการออเดอร์" Heading ---
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
               child: Text(
@@ -444,10 +427,9 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ),
             const SizedBox(height: 16),
 
-            // --- ✨ Hardcoded Order Cards ---
-            // Card 1 (Example 1 from image)
+            // Hardcoded Order Cards
             _buildOrderCard(
-              orderId: 'dummy_order_1', // Dummy ID
+              orderId: 'dummy_order_1',
               firstItem: 'Iphone 13',
               secondItem: 'โน้ตบุ๊คเกมมิ่ง',
               pickupAddress:
@@ -455,48 +437,32 @@ class _RiderMainPageState extends State<RiderMainPage> {
               destinationAddress:
                   '67/8 หมู่8 ต.ขามเรียง อ.กันทรวิชัย จ.มหาสารคาม 44150',
               customerName: 'คุณสมชาย',
-              customerPhone: '1234', // Dummy phone
-              // Placeholder image URL or a real one if you have one
+              customerPhone: '0812345678',
               customerImageUrl:
                   'https://placehold.co/100x100/A9A9A9/FFFFFF?text=S',
-              pickupLat: '16.3000', // Dummy coordinates
+              pickupLat: '16.3000',
               pickupLon: '103.2000',
               destinationLat: '16.3100',
               destinationLon: '103.2100',
             ),
-            // Card 2 (Example 2 from image)
             _buildOrderCard(
-              orderId: 'dummy_order_2', // Dummy ID
+              orderId: 'dummy_order_2',
               firstItem: 'Ps5 slim',
-              secondItem:
-                  'โน้ตบุ๊คเกมมิ่ง', // (Example had the same second item)
+              secondItem: 'โน้ตบุ๊คเกมมิ่ง',
               pickupAddress:
                   '123 หมู่12 ต.ท่าขอนยาง อ.กันทรวิชัย จ.มหาสารคาม 44150',
               destinationAddress:
                   '21/22 หมู่12 ต.ขามเรียง อ.กันทรวิชัย จ.มหาสารคาม 44150',
               customerName: 'Aof',
-              customerPhone: '5678', // Dummy phone
-              // Placeholder image URL or a real one if you have one
+              customerPhone: '0898765432',
               customerImageUrl:
                   'https://placehold.co/100x100/A9A9A9/FFFFFF?text=A',
-              pickupLat: '16.3200', // Dummy coordinates
+              pickupLat: '16.3200',
               pickupLon: '103.2200',
               destinationLat: '16.3300',
               destinationLon: '103.2300',
             ),
-            const SizedBox(height: 16), // Add some bottom padding
-            // ✨ Commented out the StreamBuilder for orders
-            /*
-            StreamBuilder<QuerySnapshot>(
-              stream: _ordersStream,
-              builder: (
-                BuildContext context,
-                AsyncSnapshot<QuerySnapshot> snapshot,
-              ) {
-                // ... (Original StreamBuilder code) ...
-              },
-            ),
-            */
+            const SizedBox(height: 16),
           ],
         ),
       ),
