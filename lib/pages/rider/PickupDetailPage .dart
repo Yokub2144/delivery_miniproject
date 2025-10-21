@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
 
-// นี่คือหน้าจอสำหรับแสดงรายละเอียดของงานรับสินค้า
-// ประกอบด้วยแผนที่แสดงตำแหน่ง และแผงข้อมูลที่สามารถเลื่อนขึ้นลงได้
 class PickupDetailPage extends StatefulWidget {
   final String orderId;
   final String customerName;
@@ -10,9 +12,10 @@ class PickupDetailPage extends StatefulWidget {
   final String pickupAddress;
   final String pickupLat;
   final String pickupLon;
-  final String firstItem; // แม้ใน UI ใหม่จะไม่ได้ใช้ แต่เก็บไว้เผื่ออนาคต
-  final String secondItem; // เช่นกัน
+  final String firstItem;
+  final String secondItem;
   final String destinationAddress;
+  final String riderId;
 
   const PickupDetailPage({
     super.key,
@@ -25,6 +28,7 @@ class PickupDetailPage extends StatefulWidget {
     required this.firstItem,
     required this.secondItem,
     required this.destinationAddress,
+    required this.riderId,
   });
 
   @override
@@ -32,127 +36,481 @@ class PickupDetailPage extends StatefulWidget {
 }
 
 class _PickupDetailPageState extends State<PickupDetailPage> {
-  // API Key สำหรับ Longdo Map (อย่าลืมเปลี่ยนเป็น Key ของคุณเอง)
   final String longdoMapApiKey = 'ba51dc98b3fd0dd3bb1ab2224a3e36d1';
   late WebViewController _webViewController;
   bool _isPageFinished = false;
+  bool _isProfileLoaded = false; // เพิ่มตัวแปรเช็คว่าโหลดโปรไฟล์แล้วหรือยัง
+  StreamSubscription<Position>? _positionStreamSubscription;
+
+  double? _currentRiderLat;
+  double? _currentRiderLon;
+  String _riderImageUrl = '';
+  String _riderName = '';
+  String _estimatedDistance = 'กำลังคำนวณ...';
+  String _estimatedTime = '...';
 
   @override
   void initState() {
     super.initState();
-    // ตั้งค่า WebViewController สำหรับแสดงแผนที่
+    _loadRiderProfileAndInitialize(); // โหลดโปรไฟล์ก่อน แล้วค่อย init map
+  }
+
+  @override
+  void dispose() {
+    _positionStreamSubscription?.cancel();
+    super.dispose();
+  }
+
+  // โหลดโปรไฟล์ก่อน แล้วค่อยสร้างแผนที่
+  Future<void> _loadRiderProfileAndInitialize() async {
+    await _loadRiderProfile();
+    if (mounted) {
+      setState(() {
+        _isProfileLoaded = true;
+      });
+      _initializeMap();
+    }
+  }
+
+  Future<void> _loadRiderProfile() async {
+    try {
+      DocumentSnapshot riderDoc = await FirebaseFirestore.instance
+          .collection('Rider')
+          .doc(widget.riderId)
+          .get();
+
+      if (riderDoc.exists) {
+        Map<String, dynamic> data = riderDoc.data() as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _riderImageUrl = data['imageUrl'] ?? '';
+            _riderName = data['name'] ?? 'ไรเดอร์';
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading rider profile: $e');
+    }
+  }
+
+  Future<bool> _checkLocationPermission() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('กรุณาเปิด GPS')));
+      }
+      return false;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('กรุณาอนุญาตการเข้าถึงตำแหน่ง')),
+          );
+        }
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('กรุณาเปิดสิทธิ์ตำแหน่งในการตั้งค่า')),
+        );
+      }
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _startLocationTracking() async {
+    bool hasPermission = await _checkLocationPermission();
+    if (!hasPermission) return;
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      _updateRiderPosition(position);
+    } catch (e) {
+      debugPrint('Error getting initial position: $e');
+    }
+
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+            _updateRiderPosition(position);
+          },
+        );
+  }
+
+  void _updateRiderPosition(Position position) {
+    if (!mounted) return;
+
+    setState(() {
+      _currentRiderLat = position.latitude;
+      _currentRiderLon = position.longitude;
+    });
+
+    final pickupLat = double.tryParse(widget.pickupLat) ?? 0.0;
+    final pickupLon = double.tryParse(widget.pickupLon) ?? 0.0;
+
+    double distanceInMeters = Geolocator.distanceBetween(
+      position.latitude,
+      position.longitude,
+      pickupLat,
+      pickupLon,
+    );
+
+    setState(() {
+      if (distanceInMeters < 1000) {
+        _estimatedDistance = '${distanceInMeters.toStringAsFixed(0)} ม.';
+      } else {
+        _estimatedDistance =
+            '${(distanceInMeters / 1000).toStringAsFixed(1)} กม.';
+      }
+      double estimatedMinutes = (distanceInMeters / 1000) / 30 * 60;
+      _estimatedTime = '${estimatedMinutes.toStringAsFixed(0)} นาที';
+    });
+
+    if (_isPageFinished) {
+      _updateRiderMarkerOnMap();
+    }
+  }
+
+  void _initializeMap() {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
       ..setNavigationDelegate(
         NavigationDelegate(
-          // เมื่อหน้าเว็บโหลดเสร็จ ให้ซ่อนตัวโหลดดิ้ง
           onPageFinished: (String url) {
-            setState(() {
-              _isPageFinished = true;
-            });
+            if (mounted) {
+              setState(() {
+                _isPageFinished = true;
+              });
+              _startLocationTracking();
+            }
           },
-          // แสดงข้อผิดพลาดถ้ามีปัญหาในการโหลดแผนที่
           onWebResourceError: (WebResourceError error) {
             debugPrint('เกิดข้อผิดพลาดการโหลดแผนที่: ${error.description}');
           },
         ),
       )
-      // โหลด HTML ที่มีโค้ดของ Longdo Map
       ..loadHtmlString(_buildMapHtml());
   }
 
-  // ฟังก์ชันนี้สร้างโค้ด HTML สำหรับแผนที่ Longdo
+  void _updateRiderMarkerOnMap() {
+    if (_currentRiderLat != null && _currentRiderLon != null) {
+      final jsCode =
+          '''
+        if (typeof updateRiderLocation === 'function') {
+          updateRiderLocation($_currentRiderLon, $_currentRiderLat);
+        }
+      ''';
+      _webViewController.runJavaScript(jsCode);
+    }
+  }
+
+  void _centerOnRider() {
+    if (_currentRiderLat != null && _currentRiderLon != null) {
+      final jsCode =
+          '''
+        if (typeof centerOnRider === 'function') {
+          centerOnRider($_currentRiderLon, $_currentRiderLat);
+        }
+      ''';
+      _webViewController.runJavaScript(jsCode);
+    }
+  }
+
+  void _openGoogleMapsNavigation() async {
+    final pickupLat = widget.pickupLat;
+    final pickupLon = widget.pickupLon;
+
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=$pickupLat,$pickupLon&travelmode=driving',
+    );
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ไม่สามารถเปิด Google Maps ได้')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error launching maps: $e');
+    }
+  }
+
   String _buildMapHtml() {
-    // แปลงค่า Lat/Lon ที่รับมาเป็น String ให้เป็น double
-    // ถ้าแปลงไม่ได้ ให้ใช้ค่าเริ่มต้นเป็นตำแหน่งของกรุงเทพฯ
-    final lat = double.tryParse(widget.pickupLat) ?? 13.7563;
-    final lon = double.tryParse(widget.pickupLon) ?? 100.5018;
+    final pickupLat = double.tryParse(widget.pickupLat) ?? 13.7563;
+    final pickupLon = double.tryParse(widget.pickupLon) ?? 100.5018;
 
-    // โค้ด HTML, CSS, และ JavaScript สำหรับแสดงแผนที่และปักหมุด
+    final safeAddress = widget.pickupAddress.replaceAll("'", "\\'");
+    final safeImageUrl = _riderImageUrl.isEmpty
+        ? 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(_riderName)}&background=6F35A5&color=fff&size=100'
+        : _riderImageUrl;
+
     return '''
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
-        <style type="text/css">
-          html { height: 100% }
-          body { height: 100%; margin: 0; padding: 0 }
-          #map { height: 100% }
-        </style>
-        <script src="https://api.longdo.com/map/?key=$longdoMapApiKey"></script>
-        <script>
-          let map;
-          let marker;
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+  <style type="text/css">
+    html { height: 100% }
+    body { height: 100%; margin: 0; padding: 0 }
+    #map { height: 100% }
+    .rider-marker {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 3px solid #6F35A5;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+      background: white;
+      overflow: hidden;
+      position: relative;
+    }
+    .rider-marker img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  </style>
+  <script src="https://api.longdo.com/map/?key=$longdoMapApiKey"></script>
+  <script>
+    let map;
+    let pickupMarker;
+    let riderMarker;
 
-          function init() {
-            try {
-              map = new longdo.Map({
-                placeholder: document.getElementById('map'),
-                language: 'th'
-              });
-              
-              const pickupLocation = { lon: $lon, lat: $lat };
-              map.location(pickupLocation, true);
-              map.zoom(15, true);
+    function init() {
+      try {
+        map = new longdo.Map({
+          placeholder: document.getElementById('map'),
+          language: 'th'
+        });
+        
+        const pickupLocation = { lon: $pickupLon, lat: $pickupLat };
+        map.location(pickupLocation, true);
+        map.zoom(15, true);
 
-              marker = new longdo.Marker(
-                  pickupLocation,
-                  { 
-                    visible: true,
-                    title: 'ต้นทางรับสินค้า'
-                  } 
-              );
-              map.Overlays.add(marker);
-            } catch (e) {
-              console.error('Error during map initialization:', e);
+        // สร้างหมุดจุดรับสินค้า (สีแดงสดใส)
+        pickupMarker = new longdo.Marker(
+          pickupLocation,
+          { 
+            visible: true,
+            title: 'จุดรับสินค้า',
+            detail: '$safeAddress',
+            icon: {
+              url: 'https://map.longdo.com/mmmap/images/pin_red.png'
             }
-          }
-        </script>
-      </head>
-      <body onload="init();">
-        <div id="map"></div>
-      </body>
-      </html>
+          } 
+        );
+        map.Overlays.add(pickupMarker);
+
+        // สร้าง marker ไรเดอร์ (รูปโปรไฟล์)
+        riderMarker = new longdo.Marker(
+          pickupLocation,
+          { 
+            visible: false,
+            title: 'ตำแหน่งของคุณ: $_riderName',
+            icon: {
+              html: '<div class="rider-marker"><img src="$safeImageUrl" onerror="this.src=\\'https://ui-avatars.com/api/?name=R&background=6F35A5&color=fff&size=100\\'" /></div>',
+              offset: { x: 25, y: 25 }
+            }
+          } 
+        );
+        map.Overlays.add(riderMarker);
+
+      } catch (e) {
+        console.error('Error during map initialization:', e);
+      }
+    }
+
+    function updateRiderLocation(lon, lat) {
+      if (riderMarker) {
+        const newLocation = { lon: lon, lat: lat };
+        riderMarker.location(newLocation);
+        riderMarker.visible(true);
+      }
+    }
+
+    function centerOnRider(lon, lat) {
+      if (map) {
+        map.location({ lon: lon, lat: lat }, true);
+        map.zoom(16, true);
+      }
+    }
+  </script>
+</head>
+<body onload="init();">
+  <div id="map"></div>
+</body>
+</html>
     ''';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // ไม่ต้องใช้ AppBar แล้ว เพราะ UI ใหม่เป็นแบบเต็มจอ
       body: Stack(
         children: [
-          // ส่วนแสดงแผนที่ จะอยู่ชั้นล่างสุด
-          // ใช้ SafeArea เพื่อป้องกันไม่ให้แผนที่แสดงทับ Status Bar ด้านบน
-          // โดยปิดการทำงานสำหรับด้านล่าง (bottom: false) เพื่อให้ DraggableSheet ชิดขอบล่างได้
-          SafeArea(
-            bottom: false,
-            child: WebViewWidget(controller: _webViewController),
-          ),
+          // แสดง WebView เมื่อโหลดโปรไฟล์เสร็จแล้ว
+          if (_isProfileLoaded)
+            SafeArea(
+              bottom: false,
+              child: WebViewWidget(controller: _webViewController),
+            ),
 
-          // แสดงตัวโหลดดิ้งขณะที่แผนที่กำลังโหลด
-          if (!_isPageFinished)
-            const Center(child: CircularProgressIndicator()),
+          // แสดง loading ขณะรอโหลดโปรไฟล์หรือแผนที่
+          if (!_isProfileLoaded || !_isPageFinished)
+            Container(
+              color: Colors.white,
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFF6F35A5)),
+                    SizedBox(height: 16),
+                    Text(
+                      'กำลังโหลดแผนที่...',
+                      style: TextStyle(fontSize: 16, color: Color(0xFF6F35A5)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
-          // ส่วนของข้อมูลที่เลื่อนได้ จะอยู่ชั้นบนสุด
-          _buildDraggableSheet(),
+          // แสดง UI ต่าง ๆ เมื่อโหลดเสร็จ
+          if (_isProfileLoaded && _isPageFinished) ...[
+            _buildEstimateInfo(),
+            _buildControlButtons(),
+            _buildDraggableSheet(),
+          ],
         ],
       ),
     );
   }
 
-  // สร้าง Widget ที่เป็นแผงข้อมูลด้านล่างที่สามารถลากขึ้นลงได้
+  Widget _buildEstimateInfo() {
+    return Positioned(
+      top: 50,
+      left: 16,
+      right: 80,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.navigation, color: Color(0xFF6F35A5), size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ระยะทางไปจุดรับสินค้า',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  Text(
+                    '$_estimatedDistance${_estimatedTime != '...' ? ' • $_estimatedTime' : ''}',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildControlButtons() {
+    return Positioned(
+      top: 50,
+      right: 16,
+      child: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: IconButton(
+              onPressed: _centerOnRider,
+              icon: const Icon(Icons.my_location, color: Color(0xFF6F35A5)),
+              tooltip: 'ตำแหน่งของฉัน',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF6F35A5),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: IconButton(
+              onPressed: _openGoogleMapsNavigation,
+              icon: const Icon(Icons.directions, color: Colors.white),
+              tooltip: 'นำทาง',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDraggableSheet() {
     return DraggableScrollableSheet(
-      // ขนาดเริ่มต้นของแผงข้อมูล (ประมาณ 40% ของหน้าจอ)
-      initialChildSize: 0.4,
-      // ขนาดเล็กสุดเมื่อลากลง (ประมาณ 15% ของหน้าจอ)
+      initialChildSize: 0.35,
       minChildSize: 0.15,
-      // ขนาดใหญ่สุดเมื่อลากขึ้น (90% ของหน้าจอ)
       maxChildSize: 0.9,
       builder: (BuildContext context, ScrollController scrollController) {
-        // ใช้ Container เพื่อสร้างขอบมนและเงา
         return Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -168,8 +526,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
               ),
             ],
           ),
-          // ใช้ SingleChildScrollView เพื่อให้เนื้อหาข้างในสามารถเลื่อนได้
-          // เมื่อลากแผงข้อมูลขึ้นจนสุด
           child: SingleChildScrollView(
             controller: scrollController,
             child: Padding(
@@ -177,7 +533,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // แถบสำหรับให้ผู้ใช้รู้ว่าลากได้
                   Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -192,12 +547,8 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 8),
-
-                  // ส่วนแสดงข้อมูลผู้ส่ง (รูป, ชื่อ, ปุ่มโทร/แชท)
                   _buildSenderInfo(),
                   const SizedBox(height: 24),
-
-                  // ส่วนแสดงที่อยู่ต้นทางและปลายทาง
                   _buildAddressInfo(
                     icon: Icons.location_on,
                     iconColor: Colors.red,
@@ -212,10 +563,8 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                     address: widget.destinationAddress,
                   ),
                   const SizedBox(height: 24),
-
-                  // ปุ่มยืนยันการรับสินค้า
                   _buildConfirmButton(),
-                  const SizedBox(height: 24), // เพิ่ม padding ด้านล่าง
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -225,19 +574,15 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     );
   }
 
-  // Widget สำหรับแสดงข้อมูลผู้ส่ง
   Widget _buildSenderInfo() {
     return Row(
       children: [
-        // รูปโปรไฟล์
         const CircleAvatar(
           radius: 25,
           backgroundColor: Colors.grey,
-          // ในอนาคตอาจจะเปลี่ยนเป็น Image.network(widget.customerImageUrl)
           child: Icon(Icons.person, color: Colors.white, size: 28),
         ),
         const SizedBox(width: 12),
-        // ชื่อและสถานะ
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,17 +603,22 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
             ],
           ),
         ),
-        // ปุ่มโทร
         IconButton(
-          onPressed: () {
-            /* TODO: ใส่ฟังก์ชันการโทร */
+          onPressed: () async {
+            final url = Uri.parse('tel:${widget.customerPhone}');
+            try {
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url);
+              }
+            } catch (e) {
+              debugPrint('Error launching phone: $e');
+            }
           },
           icon: const Icon(Icons.call, color: Colors.black54),
         ),
-        // ปุ่มแชท
         IconButton(
           onPressed: () {
-            /* TODO: ใส่ฟังก์ชันการแชท */
+            // TODO: ฟังก์ชันแชท
           },
           icon: const Icon(Icons.chat_bubble_outline, color: Colors.black54),
         ),
@@ -276,7 +626,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     );
   }
 
-  // Widget สำหรับแสดงข้อมูลที่อยู่ (ใช้ซ้ำได้ทั้งต้นทางและปลายทาง)
   Widget _buildAddressInfo({
     required IconData icon,
     required Color iconColor,
@@ -312,29 +661,26 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     );
   }
 
-  // Widget สำหรับปุ่มยืนยัน
   Widget _buildConfirmButton() {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: () {
-          // แสดง SnackBar เพื่อแจ้งเตือน
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('ยืนยันการรับสินค้าเรียบร้อย'),
               duration: Duration(seconds: 2),
             ),
           );
-          // กลับไปหน้าก่อนหน้า
           Navigator.pop(context);
         },
         icon: const Icon(Icons.camera_alt),
         label: const Text(
-          'ถ่ายเอกสาร', // เปลี่ยนข้อความตาม UI ที่ให้มา
+          'ถ่ายเอกสาร',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF6F35A5), // สีม่วงเข้ม
+          backgroundColor: const Color(0xFF6F35A5),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
