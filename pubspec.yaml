@@ -47,6 +47,7 @@ dependencies:
   get_storage: ^2.1.1
   longdo_maps_api3_flutter: ^1.12.4
   permission_handler: ^11.3.1
+  intl: ^0.20.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

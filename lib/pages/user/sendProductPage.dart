@@ -1,8 +1,16 @@
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
+
 import 'package:delivery_miniproject/pages/loginUserPage.dart';
+import 'package:delivery_miniproject/pages/user/addProductPage.dart';
 import 'package:delivery_miniproject/pages/user/profilePage.dart';
 import 'package:delivery_miniproject/pages/user/rceiveProductPage.dart';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 
 class SendProductPage extends StatefulWidget {
   const SendProductPage({super.key});
@@ -12,19 +20,51 @@ class SendProductPage extends StatefulWidget {
 }
 
 class _SendProductPageState extends State<SendProductPage> {
+  final int _currentIndex = 1; // เริ่มที่ส่งสินค้า
+  final GetStorage box = GetStorage();
+  String? phone;
+
   @override
-  int _currentIndex = 1; // เริ่มที่ส่งสินค้า
+  void initState() {
+    super.initState();
+    phone = box.read('phone');
+  }
 
   void _onMenuItemSelected(BuildContext context, String value) {
     switch (value) {
       case 'profile':
-        Get.to(Profilepage());
+        Get.to(const Profilepage());
         break;
       case 'logout':
-        Get.to(LoginUserPage());
+        Get.offAll(
+          () => const LoginUserPage(),
+        ); // ใช้ offAll เพื่อเคลียร์หน้าก่อนหน้า
         break;
     }
   }
+
+  // --- vvv NEW: ฟังก์ชันแปลง status เป็นข้อความและสี vvv ---
+  Map<String, dynamic> _getStatusInfo(int status) {
+    switch (status) {
+      case 1:
+        return {'text': 'รอไรเดอร์มารับ', 'color': Colors.deepOrange};
+      case 2:
+        return {'text': 'กำลังไปรับของ', 'color': Colors.blue};
+      case 3:
+        return {'text': 'กำลังนำส่ง', 'color': Colors.purple};
+      case 4:
+        return {'text': 'ส่งสำเร็จ', 'color': Colors.green};
+      default:
+        return {'text': 'ไม่ทราบสถานะ', 'color': Colors.grey};
+    }
+  }
+
+  String _formatDate(Timestamp timestamp) {
+    final date = timestamp.toDate();
+    final formatter = DateFormat('dd/MM/yyyy');
+    return formatter.format(date);
+  }
+  // --- ^^^ NEW: ฟังก์ชันแปลง Timestamp เป็น String ^^^ ---
 
   @override
   Widget build(BuildContext context) {
@@ -54,9 +94,10 @@ class _SendProductPageState extends State<SendProductPage> {
             icon: const Icon(Icons.more_vert, color: Colors.white),
             color: Colors.white,
           ),
-          const SizedBox(width: 8), // เพิ่มระยะห่างด้านขวาเล็กน้อย
+          const SizedBox(width: 8),
         ],
       ),
+      // --- vvv CHANGED: เปลี่ยน body เป็น StreamBuilder vvv ---
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -67,30 +108,89 @@ class _SendProductPageState extends State<SendProductPage> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            _buildProductCard(
-              productName: 'โน๊ตบุ๊คเกมมิ่ง',
-              receiverName: 'สมชาย ใจดี',
-              deliveryDate: '24/09/2025',
-              address: '123 หมู่12 ต.ท่ายาง อ.กันทรวิชัย จ.มหาสารคาม 44150',
-              status: 'กำลังนำส่งสินค้า',
-              statusColor: Colors.purple,
-              isFirst: true,
-            ),
-            _buildProductCard(
-              productName: 'Ps5 slim',
-              receiverName: 'กาญจนา ดีมาก',
-              deliveryDate: '25/09/2025',
-              address: '456 หมู่12 ต.บ้านดินดำ อ.กันทรวิชัย จ.มหาสารคาม 44150',
-              status: 'รอไรเดอร์มารับ',
-              statusColor: Colors.deepOrange,
-              isFirst: false,
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('Product')
+                  .where('senderPhone', isEqualTo: phone)
+                  .orderBy('sendDate', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'),
+                  );
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.inbox_outlined,
+                            size: 60,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'ยังไม่มีรายการส่งสินค้า',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                          Text(
+                            'กดปุ่ม + เพื่อเพิ่มรายการใหม่',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final products = snapshot.data!.docs;
+
+                // --- CHANGED: Used ListView.separated for spacing ---
+                return ListView.separated(
+                  physics: const NeverScrollableScrollPhysics(), // Important
+                  shrinkWrap: true, // Important
+                  itemCount: products.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 16),
+                  itemBuilder: (context, index) {
+                    final productDoc = products[index];
+                    final data = productDoc.data() as Map<String, dynamic>;
+
+                    final statusInfo = _getStatusInfo(data['status'] ?? 0);
+
+                    final timestamp = data['sendDate'] as Timestamp?;
+                    final dateString = timestamp != null
+                        ? _formatDate(timestamp)
+                        : 'ไม่มีข้อมูลวันที่';
+
+                    return _buildProductCard(
+                      productName: data['itemName'] ?? 'ไม่มีชื่อสินค้า',
+                      receiverName: data['receiverName'] ?? 'N/A',
+                      deliveryDate: dateString,
+                      address: data['receiverAddress'] ?? 'N/A',
+                      status: statusInfo['text'],
+                      statusColor: statusInfo['color'],
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),
       ),
+      // --- ^^^ CHANGED: เปลี่ยน body เป็น StreamBuilder ^^^ ---
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Logic เพิ่มสินค้าใหม่
+          if (phone != null) {
+            Get.to(() => Addproductpage(senderPhoneNumber: phone!));
+          }
         },
         backgroundColor: Colors.deepPurple,
         child: const Icon(Icons.add, color: Colors.white),
@@ -100,18 +200,12 @@ class _SendProductPageState extends State<SendProductPage> {
         selectedItemColor: Colors.deepPurple,
         unselectedItemColor: Colors.grey,
         onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-            if (index == 0) {
-              // ไปหน้า ReceiveProductPage หรือหน้ารับสินค้า
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ReceiveProductPage(),
-                ),
-              );
-            }
-          });
+          if (index == 0) {
+            Get.off(
+              () => const ReceiveProductPage(),
+              transition: Transition.noTransition,
+            );
+          }
         },
         items: const [
           BottomNavigationBarItem(
@@ -131,10 +225,9 @@ class _SendProductPageState extends State<SendProductPage> {
     required String address,
     required String status,
     required Color statusColor,
-    required bool isFirst,
   }) {
     return Container(
-      margin: EdgeInsets.only(top: isFirst ? 0 : 16.0),
+      margin: const EdgeInsets.only(bottom: 16.0),
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.deepPurple.withOpacity(0.1),
