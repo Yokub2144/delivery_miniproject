@@ -1,4 +1,3 @@
-// ✨ Imports (เหมือนเดิม, ตรวจสอบ path ให้ถูกต้อง)
 import 'package:delivery_miniproject/pages/rider/EditRiderProfilePage.dart';
 import 'package:delivery_miniproject/pages/rider/PickupDetailPage%20.dart';
 import 'package:delivery_miniproject/pages/rider/viewRiderProfilePage.dart';
@@ -28,7 +27,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
         .snapshots();
   }
 
-  // ✨ ฟังก์ชัน _buildOrderCard (เพิ่ม riderId parameter)
   Widget _buildOrderCard({
     required String orderId,
     required String firstItem,
@@ -92,13 +90,15 @@ class _RiderMainPageState extends State<RiderMainPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '• $secondItem',
-                      style: const TextStyle(fontSize: 15),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    if (secondItem.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '• $secondItem',
+                        style: const TextStyle(fontSize: 15),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -118,20 +118,11 @@ class _RiderMainPageState extends State<RiderMainPage> {
                     CircleAvatar(
                       radius: 25,
                       backgroundColor: Colors.grey.shade300,
-                      backgroundImage:
-                          (customerImageUrl.isNotEmpty &&
-                              customerImageUrl.startsWith('http'))
-                          ? NetworkImage(customerImageUrl)
-                          : null,
-                      child:
-                          (customerImageUrl.isEmpty ||
-                              !customerImageUrl.startsWith('http'))
-                          ? Icon(
-                              Icons.person,
-                              size: 30,
-                              color: Colors.grey.shade600,
-                            )
-                          : null,
+                      child: Icon(
+                        Icons.person,
+                        size: 30,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -169,7 +160,10 @@ class _RiderMainPageState extends State<RiderMainPage> {
                     ),
                     Text(
                       pickupAddress,
-                      style: TextStyle(fontSize: 14, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -197,7 +191,10 @@ class _RiderMainPageState extends State<RiderMainPage> {
                     ),
                     Text(
                       destinationAddress,
-                      style: TextStyle(fontSize: 14, color: Colors.black87),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.black87,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -212,7 +209,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () {
-                  // ✨ ส่ง riderId ไปด้วย
                   Get.to(
                     () => PickupDetailPage(
                       orderId: orderId,
@@ -224,7 +220,9 @@ class _RiderMainPageState extends State<RiderMainPage> {
                       firstItem: firstItem,
                       secondItem: secondItem,
                       destinationAddress: destinationAddress,
-                      riderId: widget.riderId, // ✨ เพิ่มบรรทัดนี้
+                      destinationLat: destinationLat,
+                      destinationLon: destinationLon,
+                      riderId: widget.riderId,
                     ),
                   );
                 },
@@ -427,40 +425,76 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ),
             const SizedBox(height: 16),
 
-            // Hardcoded Order Cards
-            _buildOrderCard(
-              orderId: 'dummy_order_1',
-              firstItem: 'Iphone 13',
-              secondItem: 'โน้ตบุ๊คเกมมิ่ง',
-              pickupAddress:
-                  '456 หมู่12 ต.บ้านดินดำ อ.กันทรวิชัย จ.มหาสารคาม 44150',
-              destinationAddress:
-                  '67/8 หมู่8 ต.ขามเรียง อ.กันทรวิชัย จ.มหาสารคาม 44150',
-              customerName: 'คุณสมชาย',
-              customerPhone: '0812345678',
-              customerImageUrl:
-                  'https://placehold.co/100x100/A9A9A9/FFFFFF?text=S',
-              pickupLat: '16.3000',
-              pickupLon: '103.2000',
-              destinationLat: '16.3100',
-              destinationLon: '103.2100',
-            ),
-            _buildOrderCard(
-              orderId: 'dummy_order_2',
-              firstItem: 'Ps5 slim',
-              secondItem: 'โน้ตบุ๊คเกมมิ่ง',
-              pickupAddress:
-                  '123 หมู่12 ต.ท่าขอนยาง อ.กันทรวิชัย จ.มหาสารคาม 44150',
-              destinationAddress:
-                  '21/22 หมู่12 ต.ขามเรียง อ.กันทรวิชัย จ.มหาสารคาม 44150',
-              customerName: 'Aof',
-              customerPhone: '0898765432',
-              customerImageUrl:
-                  'https://placehold.co/100x100/A9A9A9/FFFFFF?text=A',
-              pickupLat: '16.3200',
-              pickupLon: '103.2200',
-              destinationLat: '16.3300',
-              destinationLon: '103.2300',
+            // ดึงข้อมูลจาก Firestore
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('Product')
+                  .where('status', isEqualTo: 1)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'),
+                  );
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.inbox_outlined,
+                            size: 60,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'ยังไม่มีออเดอร์ใหม่',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final products = snapshot.data!.docs;
+
+                return ListView.builder(
+                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,
+                  itemCount: products.length,
+                  itemBuilder: (context, index) {
+                    final productDoc = products[index];
+                    final data = productDoc.data() as Map<String, dynamic>;
+
+                    return _buildOrderCard(
+                      orderId: productDoc.id,
+                      firstItem: data['itemName'] ?? 'ไม่มีชื่อสินค้า',
+                      secondItem: data['itemDescription'] ?? '',
+                      pickupAddress: data['senderAddress'] ?? 'N/A',
+                      destinationAddress: data['receiverAddress'] ?? 'N/A',
+                      customerName: data['senderName'] ?? 'N/A',
+                      customerPhone: data['senderPhone'] ?? '',
+                      customerImageUrl: '',
+                      pickupLat: data['senderLat']?.toString() ?? '0.0',
+                      pickupLon: data['senderLng']?.toString() ?? '0.0',
+                      destinationLat: data['receiverLat']?.toString() ?? '0.0',
+                      destinationLon: data['receiverLng']?.toString() ?? '0.0',
+                    );
+                  },
+                );
+              },
             ),
             const SizedBox(height: 16),
           ],

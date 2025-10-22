@@ -15,10 +15,12 @@ class PickupDetailPage extends StatefulWidget {
   final String firstItem;
   final String secondItem;
   final String destinationAddress;
+  final String destinationLat;
+  final String destinationLon;
   final String riderId;
 
   const PickupDetailPage({
-    super.key,
+    Key? key,
     required this.orderId,
     required this.customerName,
     required this.customerPhone,
@@ -28,8 +30,10 @@ class PickupDetailPage extends StatefulWidget {
     required this.firstItem,
     required this.secondItem,
     required this.destinationAddress,
+    required this.destinationLat,
+    required this.destinationLon,
     required this.riderId,
-  });
+  }) : super(key: key);
 
   @override
   State<PickupDetailPage> createState() => _PickupDetailPageState();
@@ -39,7 +43,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   final String longdoMapApiKey = 'ba51dc98b3fd0dd3bb1ab2224a3e36d1';
   late WebViewController _webViewController;
   bool _isPageFinished = false;
-  bool _isProfileLoaded = false; // เพิ่มตัวแปรเช็คว่าโหลดโปรไฟล์แล้วหรือยัง
+  bool _isProfileLoaded = false;
   StreamSubscription<Position>? _positionStreamSubscription;
 
   double? _currentRiderLat;
@@ -52,7 +56,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   @override
   void initState() {
     super.initState();
-    _loadRiderProfileAndInitialize(); // โหลดโปรไฟล์ก่อน แล้วค่อย init map
+    _loadRiderProfileAndInitialize();
   }
 
   @override
@@ -61,7 +65,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     super.dispose();
   }
 
-  // โหลดโปรไฟล์ก่อน แล้วค่อยสร้างแผนที่
   Future<void> _loadRiderProfileAndInitialize() async {
     await _loadRiderProfile();
     if (mounted) {
@@ -312,7 +315,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         map.location(pickupLocation, true);
         map.zoom(15, true);
 
-        // สร้างหมุดจุดรับสินค้า (สีแดงสดใส)
         pickupMarker = new longdo.Marker(
           pickupLocation,
           { 
@@ -326,7 +328,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         );
         map.Overlays.add(pickupMarker);
 
-        // สร้าง marker ไรเดอร์ (รูปโปรไฟล์)
         riderMarker = new longdo.Marker(
           pickupLocation,
           { 
@@ -373,21 +374,18 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     return Scaffold(
       body: Stack(
         children: [
-          // แสดง WebView เมื่อโหลดโปรไฟล์เสร็จแล้ว
           if (_isProfileLoaded)
             SafeArea(
               bottom: false,
               child: WebViewWidget(controller: _webViewController),
             ),
-
-          // แสดง loading ขณะรอโหลดโปรไฟล์หรือแผนที่
           if (!_isProfileLoaded || !_isPageFinished)
             Container(
               color: Colors.white,
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                  children: const [
                     CircularProgressIndicator(color: Color(0xFF6F35A5)),
                     SizedBox(height: 16),
                     Text(
@@ -398,8 +396,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                 ),
               ),
             ),
-
-          // แสดง UI ต่าง ๆ เมื่อโหลดเสร็จ
           if (_isProfileLoaded && _isPageFinished) ...[
             _buildEstimateInfo(),
             _buildControlButtons(),
