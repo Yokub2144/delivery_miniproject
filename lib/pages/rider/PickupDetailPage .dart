@@ -1,11 +1,24 @@
+// [แก้ไข] เพิ่ม import ที่จำเป็น
+import 'dart:developer'; // For log()
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'package:cloudinary_public/cloudinary_public.dart';
+
+// [แก้ไข] ลบ import ของ Firebase Storage
+// import 'package:firebase_storage/firebase_storage.dart';
+
+// --- (import อื่นๆ เหมือนเดิม) ---
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class PickupDetailPage extends StatefulWidget {
+  // --- (Properties เหมือนเดิม) ---
   final String orderId;
   final String customerName;
   final String customerPhone;
@@ -40,6 +53,7 @@ class PickupDetailPage extends StatefulWidget {
 }
 
 class _PickupDetailPageState extends State<PickupDetailPage> {
+  // --- (Properties ส่วนใหญ่เหมือนเดิม) ---
   final String longdoMapApiKey = 'ba51dc98b3fd0dd3bb1ab2224a3e36d1';
   late WebViewController _webViewController;
   bool _isPageFinished = false;
@@ -50,19 +64,59 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   double? _currentRiderLon;
   String _riderImageUrl = '';
   String _riderName = '';
-  String _estimatedDistance = 'กำลังคำนวณ...';
+  String _estimatedDistance = 'กำลังคำนวน...';
   String _estimatedTime = '...';
+
+  int _currentStatus = 2;
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploading = false;
+
+  // --- [เพิ่ม] Initialize Cloudinary (เหมือนใน statusPage.dart) ---
+  final cloudinary = CloudinaryPublic(
+    'dzicj4dci', // Cloud Name จาก statusPage.dart
+    'flutter_unsigned', // Upload Preset จาก statusPage.dart
+    cache: false,
+  );
+  // --- [สิ้นสุดการเพิ่ม] ---
 
   @override
   void initState() {
     super.initState();
     _loadRiderProfileAndInitialize();
+    _loadCurrentStatus();
   }
 
   @override
   void dispose() {
     _positionStreamSubscription?.cancel();
     super.dispose();
+  }
+
+  // --- (ฟังก์ชัน _loadCurrentStatus, _loadRiderProfileAndInitialize, _loadRiderProfile, _checkLocationPermission, _startLocationTracking, _updateRiderLocationToFirestore, _updateRiderPosition, _initializeMap, _updateMapBasedOnStatus, _updateRiderMarkerOnMap, _updateRouteOnMap, _centerOnRider, _openGoogleMapsNavigation เหมือนเดิมทุกประการ) ---
+
+  // ( ... คัดลอกฟังก์ชันที่ไม่ได้แก้ไขมาวางที่นี่ ... )
+  // ... (ขอย่อไว้เพื่อไม่ให้ข้อความยาวเกินไป) ...
+  // ... (ตั้งแต่ _loadCurrentStatus() จนถึง _openGoogleMapsNavigation()) ...
+
+  // --- [แก้ไข] โหลดสถานะปัจจุบันจาก Firestore ---
+  Future<void> _loadCurrentStatus() async {
+    try {
+      DocumentSnapshot productDoc = await FirebaseFirestore.instance
+          .collection('Product')
+          .doc(widget.orderId)
+          .get();
+
+      if (productDoc.exists) {
+        Map<String, dynamic> data = productDoc.data() as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _currentStatus = data['status'] ?? 2;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading status: $e');
+    }
   }
 
   Future<void> _loadRiderProfileAndInitialize() async {
@@ -139,6 +193,35 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     bool hasPermission = await _checkLocationPermission();
     if (!hasPermission) return;
 
+    // --- ⚠️ โหมดทดสอบ: ใช้ตำแหน่งปลายทางเป็นตำแหน่งจำลอง ---
+    const bool _isTesting =
+        false; // 👈 ----------------- ปิด/เปิด โหมดทดสอบที่นี่
+    if (_isTesting && mounted) {
+      debugPrint('--- ⚠️ กำลังทำงานในโหมดทดสอบ (Mock Location) ---');
+      final double targetLat = _currentStatus == 2
+          ? (double.tryParse(widget.pickupLat) ?? 13.7563)
+          : (double.tryParse(widget.destinationLat) ?? 16.250377);
+      final double targetLon = _currentStatus == 2
+          ? (double.tryParse(widget.pickupLon) ?? 100.5018)
+          : (double.tryParse(widget.destinationLon) ?? 103.275482);
+      Position fakePosition = Position.fromMap({
+        'latitude': targetLat,
+        'longitude': targetLon,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'accuracy': 5.0,
+        'altitude': 0.0,
+        'altitude_accuracy': 0.0,
+        'heading': 0.0,
+        'heading_accuracy': 0.0,
+        'speed': 10.0,
+        'speed_accuracy': 1.0,
+        'is_mocked': true,
+      });
+      _updateRiderPosition(fakePosition);
+      return;
+    }
+    // --- ⚠️ สิ้นสุดโหมดทดสอบ ---
+
     try {
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -147,12 +230,10 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     } catch (e) {
       debugPrint('Error getting initial position: $e');
     }
-
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
       distanceFilter: 10,
     );
-
     _positionStreamSubscription =
         Geolocator.getPositionStream(locationSettings: locationSettings).listen(
           (Position position) {
@@ -161,24 +242,41 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         );
   }
 
+  Future<void> _updateRiderLocationToFirestore(double lat, double lng) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('Rider')
+          .doc(widget.riderId)
+          .update({
+            'currentLat': lat,
+            'currentLng': lng,
+            'lastUpdated': FieldValue.serverTimestamp(),
+          });
+      debugPrint('อัพเดทตำแหน่งไรเดอร์สำเร็จ: $lat, $lng');
+    } catch (e) {
+      debugPrint('Error updating rider location: $e');
+    }
+  }
+
   void _updateRiderPosition(Position position) {
     if (!mounted) return;
-
     setState(() {
       _currentRiderLat = position.latitude;
       _currentRiderLon = position.longitude;
     });
-
-    final pickupLat = double.tryParse(widget.pickupLat) ?? 0.0;
-    final pickupLon = double.tryParse(widget.pickupLon) ?? 0.0;
-
+    _updateRiderLocationToFirestore(position.latitude, position.longitude);
+    final double targetLat = _currentStatus == 2
+        ? (double.tryParse(widget.pickupLat) ?? 0.0)
+        : (double.tryParse(widget.destinationLat) ?? 0.0);
+    final double targetLon = _currentStatus == 2
+        ? (double.tryParse(widget.pickupLon) ?? 0.0)
+        : (double.tryParse(widget.destinationLon) ?? 0.0);
     double distanceInMeters = Geolocator.distanceBetween(
       position.latitude,
       position.longitude,
-      pickupLat,
-      pickupLon,
+      targetLat,
+      targetLon,
     );
-
     setState(() {
       if (distanceInMeters < 1000) {
         _estimatedDistance = '${distanceInMeters.toStringAsFixed(0)} ม.';
@@ -186,10 +284,10 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         _estimatedDistance =
             '${(distanceInMeters / 1000).toStringAsFixed(1)} กม.';
       }
-      double estimatedMinutes = (distanceInMeters / 1000) / 30 * 60;
+      double estimatedMinutes =
+          (distanceInMeters / 1000) / 30 * 60; // สมมติ 30 กม/ชม
       _estimatedTime = '${estimatedMinutes.toStringAsFixed(0)} นาที';
     });
-
     if (_isPageFinished) {
       _updateRiderMarkerOnMap();
     }
@@ -207,6 +305,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                 _isPageFinished = true;
               });
               _startLocationTracking();
+              _updateMapBasedOnStatus();
             }
           },
           onWebResourceError: (WebResourceError error) {
@@ -217,6 +316,37 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
       ..loadHtmlString(_buildMapHtml());
   }
 
+  void _updateMapBasedOnStatus() {
+    if (!_isPageFinished) return;
+    final pickupLat = double.tryParse(widget.pickupLat) ?? 13.7563;
+    final pickupLon = double.tryParse(widget.pickupLon) ?? 100.5018;
+    final destLat = double.tryParse(widget.destinationLat) ?? 13.7563;
+    final destLon = double.tryParse(widget.destinationLon) ?? 100.5018;
+    if (_currentStatus == 2) {
+      final jsCode =
+          '''
+        showPickupMarker($pickupLon, $pickupLat, '${widget.pickupAddress.replaceAll("'", "\\'")}');
+        hideDestinationMarker();
+        if (typeof updateRiderLocation === 'function' && $_currentRiderLon != null && $_currentRiderLat != null) {
+          updateRiderLocation($_currentRiderLon, $_currentRiderLat);
+          drawRoute($_currentRiderLon, $_currentRiderLat, $pickupLon, $pickupLat);
+        }
+      ''';
+      _webViewController.runJavaScript(jsCode);
+    } else if (_currentStatus == 3) {
+      final jsCode =
+          '''
+        hidePickupMarker();
+        showDestinationMarker($destLon, $destLat, '${widget.destinationAddress.replaceAll("'", "\\'")}');
+        if (typeof updateRiderLocation === 'function' && $_currentRiderLon != null && $_currentRiderLat != null) {
+          updateRiderLocation($_currentRiderLon, $_currentRiderLat);
+          drawRoute($_currentRiderLon, $_currentRiderLat, $destLon, $destLat);
+        }
+      ''';
+      _webViewController.runJavaScript(jsCode);
+    }
+  }
+
   void _updateRiderMarkerOnMap() {
     if (_currentRiderLat != null && _currentRiderLon != null) {
       final jsCode =
@@ -225,6 +355,24 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
           updateRiderLocation($_currentRiderLon, $_currentRiderLat);
         }
       ''';
+      _webViewController.runJavaScript(jsCode);
+      _updateRouteOnMap();
+    }
+  }
+
+  void _updateRouteOnMap() {
+    if (_currentRiderLat == null || _currentRiderLon == null) return;
+    final pickupLat = double.tryParse(widget.pickupLat) ?? 13.7563;
+    final pickupLon = double.tryParse(widget.pickupLon) ?? 100.5018;
+    final destLat = double.tryParse(widget.destinationLat) ?? 13.7563;
+    final destLon = double.tryParse(widget.destinationLon) ?? 100.5018;
+    if (_currentStatus == 2) {
+      final jsCode =
+          'drawRoute($_currentRiderLon, $_currentRiderLat, $pickupLon, $pickupLat);';
+      _webViewController.runJavaScript(jsCode);
+    } else if (_currentStatus == 3) {
+      final jsCode =
+          'drawRoute($_currentRiderLon, $_currentRiderLat, $destLon, $destLat);';
       _webViewController.runJavaScript(jsCode);
     }
   }
@@ -242,13 +390,15 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   }
 
   void _openGoogleMapsNavigation() async {
-    final pickupLat = widget.pickupLat;
-    final pickupLon = widget.pickupLon;
-
+    final String targetLat = _currentStatus == 2
+        ? widget.pickupLat
+        : widget.destinationLat;
+    final String targetLon = _currentStatus == 2
+        ? widget.pickupLon
+        : widget.destinationLon;
     final url = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=$pickupLat,$pickupLon&travelmode=driving',
+      'https://www.google.com/maps/dir/?api=1&destination=$targetLat,$targetLon&travelmode=driving',
     );
-
     try {
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
@@ -264,11 +414,113 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     }
   }
 
+  // --- [แก้ไข] ฟังก์ชันถ่ายรูปและอัพโหลด (เปลี่ยนไปใช้ Cloudinary) ---
+  Future<void> _takePhotoAndUpdateStatus(int newStatus) async {
+    try {
+      // 1. ถ่ายรูป
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        maxHeight: 1080,
+        imageQuality: 85,
+      );
+
+      if (photo == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('ยกเลิกการถ่ายรูป')));
+        }
+        return;
+      }
+
+      // 2. แสดง Loading
+      setState(() {
+        _isUploading = true;
+      });
+
+      // --- 3. [NEW] อัพโหลดไปยัง Cloudinary (เหมือน statusPage.dart) ---
+      final Directory tempDir = await getApplicationDocumentsDirectory();
+      final String fileExtension = p.extension(photo.name);
+      final String newFileName =
+          '${DateTime.now().millisecondsSinceEpoch}$fileExtension';
+      final File file = File('${tempDir.path}/$newFileName');
+      await photo.saveTo(file.path);
+
+      log('กำลังอัปโหลดรูปไป Cloudinary...');
+      final CloudinaryResponse response = await cloudinary.uploadFile(
+        CloudinaryFile.fromFile(
+          file.path,
+          resourceType: CloudinaryResourceType.Image,
+        ),
+      );
+      final downloadUrl = response.secureUrl; // นี่คือ Cloudinary URL
+      log('อัปโหลด Cloudinary สำเร็จ: $downloadUrl');
+      // --- [END NEW] ---
+
+      // 4. อัพเดท Firestore (เปลี่ยน schema ให้ตรงกับ statusPage.dart)
+      final String photoKey = newStatus.toString(); // '3' หรือ '4'
+      await FirebaseFirestore.instance
+          .collection('Product')
+          .doc(widget.orderId)
+          .update({
+            'status': newStatus,
+            'statusPhotos.$photoKey':
+                downloadUrl, // <-- [แก้ไข] ใช้ statusPhotos map
+            // 'status${newStatus}ImageUrl': downloadUrl, // <-- ลบอันเก่า
+            'status${newStatus}UpdatedAt':
+                FieldValue.serverTimestamp(), // <-- อันนี้เก็บไว้ได้
+          });
+
+      // 5. อัพเดทสถานะใน State
+      if (mounted) {
+        setState(() {
+          _currentStatus = newStatus;
+          _isUploading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newStatus == 3
+                  ? 'ยืนยันการรับสินค้าสำเร็จ'
+                  : 'ยืนยันการส่งสินค้าสำเร็จ',
+            ),
+          ),
+        );
+
+        // [แก้ไข] อัพเดทแผนที่และ UI หลังจากเปลี่ยนสถานะ
+        if (newStatus == 3) {
+          _updateMapBasedOnStatus(); // เปลี่ยนเป็นเส้นทางไปจุดส่ง
+        } else if (newStatus == 4) {
+          // ถ้าอัพเดทเป็น status 4 แล้ว ให้กลับไปหน้าหลัก
+          await Future.delayed(const Duration(seconds: 1));
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        }
+      }
+    } catch (e) {
+      log('Error taking photo and updating status: $e'); // ใช้ log
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('เกิดข้อผิดพลาด: $e')));
+      }
+    }
+  }
+
+  // --- (ฟังก์ชัน _buildMapHtml, build, _buildEstimateInfo, _buildControlButtons, _buildDraggableSheet, _buildSenderInfo, _buildAddressInfo, _buildStatusButtons เหมือนเดิมทุกประการ) ---
+
+  // ( ... คัดลอกฟังก์ชันที่เหลือ (ตั้งแต่ _buildMapHtml) มาวางที่นี่ ... )
+  // ... (ขอย่อไว้เพื่อไม่ให้ข้อความยาวเกินไป) ...
   String _buildMapHtml() {
     final pickupLat = double.tryParse(widget.pickupLat) ?? 13.7563;
     final pickupLon = double.tryParse(widget.pickupLon) ?? 100.5018;
 
-    final safeAddress = widget.pickupAddress.replaceAll("'", "\\'");
     final safeImageUrl = _riderImageUrl.isEmpty
         ? 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(_riderName)}&background=6F35A5&color=fff&size=100'
         : _riderImageUrl;
@@ -302,7 +554,9 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   <script>
     let map;
     let pickupMarker;
+    let destinationMarker;
     let riderMarker;
+    let route;
 
     function init() {
       try {
@@ -311,39 +565,69 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
           language: 'th'
         });
         
-        const pickupLocation = { lon: $pickupLon, lat: $pickupLat };
-        map.location(pickupLocation, true);
+        map.location({ lon: $pickupLon, lat: $pickupLat }, true);
         map.zoom(15, true);
 
         pickupMarker = new longdo.Marker(
-          pickupLocation,
+          { lon: $pickupLon, lat: $pickupLat },
           { 
-            visible: true,
+            visible: false,
             title: 'จุดรับสินค้า',
-            detail: '$safeAddress',
-            icon: {
-              url: 'https://map.longdo.com/mmmap/images/pin_red.png'
-            }
+            icon: { url: 'https://map.longdo.com/mmmap/images/pin_red.png' }
           } 
         );
         map.Overlays.add(pickupMarker);
 
+        destinationMarker = new longdo.Marker(
+          { lon: 100.5018, lat: 13.7563 }, 
+          { 
+            visible: false,
+            title: 'จุดส่งสินค้า',
+            icon: { url: 'https://map.longdo.com/mmmap/images/pin_blue.png' }
+          }
+        );
+        map.Overlays.add(destinationMarker);
+
         riderMarker = new longdo.Marker(
-          pickupLocation,
+          { lon: $pickupLon, lat: $pickupLat },
           { 
             visible: false,
             title: 'ตำแหน่งของคุณ: $_riderName',
             icon: {
-              html: '<div class="rider-marker"><img src="$safeImageUrl" onerror="this.src=\\'https://ui-avatars.com/api/?name=R&background=6F35A5&color=fff&size=100\\'" /></div>',
+              html: '<div class="rider-marker"><img src="$safeImageUrl" onerror="this.src=\\'https://ui-avatars.com/api/?name=R&background=6F35A5&color=fff&size=100\\'"/></div>',
               offset: { x: 25, y: 25 }
             }
           } 
         );
         map.Overlays.add(riderMarker);
 
+        route = new longdo.Route(null, {
+            color: '#6F35A5',
+            weight: 6,
+            opacity: 0.8
+        });
+        map.Overlays.add(route);
+
       } catch (e) {
         console.error('Error during map initialization:', e);
       }
+    }
+
+    function showPickupMarker(lon, lat, detail) {
+      pickupMarker.location({ lon: lon, lat: lat });
+      pickupMarker.detail(detail);
+      pickupMarker.visible(true);
+    }
+    function hidePickupMarker() {
+      pickupMarker.visible(false);
+    }
+    function showDestinationMarker(lon, lat, detail) {
+      destinationMarker.location({ lon: lon, lat: lat });
+      destinationMarker.detail(detail);
+      destinationMarker.visible(true);
+    }
+    function hideDestinationMarker() {
+      destinationMarker.visible(false);
     }
 
     function updateRiderLocation(lon, lat) {
@@ -352,6 +636,15 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         riderMarker.location(newLocation);
         riderMarker.visible(true);
       }
+    }
+    
+    function drawRoute(fromLon, fromLat, toLon, toLat) {
+        map.Route.search({ lon: fromLon, lat: fromLat }, { lon: toLon, lat: toLat }, (result) => {
+            if (result.data) {
+                route.data(result.data);
+                map.bound(route.bound()); 
+            }
+        });
     }
 
     function centerOnRider(lon, lat) {
@@ -401,12 +694,33 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
             _buildControlButtons(),
             _buildDraggableSheet(),
           ],
+          if (_isUploading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text(
+                      'กำลังอัพโหลดรูปภาพ...',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildEstimateInfo() {
+    final String titleText = _currentStatus == 2
+        ? 'ระยะทางไปจุดรับสินค้า'
+        : 'ระยะทางไปจุดส่งสินค้า';
+
     return Positioned(
       top: 50,
       left: 16,
@@ -434,7 +748,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'ระยะทางไปจุดรับสินค้า',
+                    titleText,
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                   Text(
@@ -559,7 +873,8 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                     address: widget.destinationAddress,
                   ),
                   const SizedBox(height: 24),
-                  _buildConfirmButton(),
+
+                  _buildStatusButtons(),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -657,33 +972,72 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     );
   }
 
-  Widget _buildConfirmButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('ยืนยันการรับสินค้าเรียบร้อย'),
-              duration: Duration(seconds: 2),
+  Widget _buildStatusButtons() {
+    if (_currentStatus == 2) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => _takePhotoAndUpdateStatus(3),
+          icon: const Icon(Icons.camera_alt),
+          label: const Text(
+            'ถ่ายรูปยืนยันรับสินค้า',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
             ),
-          );
-          Navigator.pop(context);
-        },
-        icon: const Icon(Icons.camera_alt),
-        label: const Text(
-          'ถ่ายเอกสาร',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF6F35A5),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
           ),
         ),
-      ),
-    );
+      );
+    } else if (_currentStatus == 3) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => _takePhotoAndUpdateStatus(4),
+          icon: const Icon(Icons.camera_alt),
+          label: const Text(
+            'ถ่ายรูปยืนยันส่งสินค้า',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF6F35A5),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30),
+            ),
+          ),
+        ),
+      );
+    } else {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.check_circle, color: Colors.green, size: 28),
+            SizedBox(width: 12),
+            Text(
+              'ส่งสินค้าสำเร็จแล้ว',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
