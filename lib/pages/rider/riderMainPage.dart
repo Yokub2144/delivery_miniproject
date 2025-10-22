@@ -527,7 +527,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                   Get.to(
                     () => StatusPage(
                       productId: orderId,
-                      userRole: sp.UserRole.sender,
+                      userRole: sp.UserRole.rider,
                     ),
                   );
                 },
