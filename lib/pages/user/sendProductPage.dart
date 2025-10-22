@@ -1,3 +1,4 @@
+import 'package:delivery_miniproject/pages/user/trackingRider.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
@@ -117,8 +118,7 @@ class _SendProductPageState extends State<SendProductPage> {
                     style: TextStyle(color: Colors.deepPurple),
                   ),
                   onPressed: () {
-                    // TODO: Implement navigation to Rider Tracking Map Page
-                    print("Navigate to Rider Tracking Map");
+                    Get.to(() => Trackingrider());
                   },
                   style: TextButton.styleFrom(
                     padding: EdgeInsets.symmetric(
