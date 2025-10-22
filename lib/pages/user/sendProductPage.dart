@@ -1,16 +1,14 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:intl/intl.dart';
 
 import 'package:delivery_miniproject/pages/loginUserPage.dart';
 import 'package:delivery_miniproject/pages/user/addProductPage.dart';
 import 'package:delivery_miniproject/pages/user/profilePage.dart';
 import 'package:delivery_miniproject/pages/user/rceiveProductPage.dart';
-import 'package:intl/intl.dart';
+import 'package:delivery_miniproject/pages/statusPage.dart'; // <-- 1. Import StatusPage and UserRole
 
 class SendProductPage extends StatefulWidget {
   const SendProductPage({super.key});
@@ -43,7 +41,6 @@ class _SendProductPageState extends State<SendProductPage> {
     }
   }
 
-  // --- vvv NEW: ฟังก์ชันแปลง status เป็นข้อความและสี vvv ---
   Map<String, dynamic> _getStatusInfo(int status) {
     switch (status) {
       case 1:
@@ -64,7 +61,6 @@ class _SendProductPageState extends State<SendProductPage> {
     final formatter = DateFormat('dd/MM/yyyy');
     return formatter.format(date);
   }
-  // --- ^^^ NEW: ฟังก์ชันแปลง Timestamp เป็น String ^^^ ---
 
   @override
   Widget build(BuildContext context) {
@@ -97,16 +93,46 @@ class _SendProductPageState extends State<SendProductPage> {
           const SizedBox(width: 8),
         ],
       ),
-      // --- vvv CHANGED: เปลี่ยน body เป็น StreamBuilder vvv ---
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'รายการ',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            // --- vvv CHANGED: Added Row for Title and Button vvv ---
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween, // Align items
+              children: [
+                const Text(
+                  'รายการ',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                TextButton.icon(
+                  icon: Icon(
+                    Icons.map_outlined,
+                    size: 18,
+                    color: Colors.deepPurple,
+                  ),
+                  label: const Text(
+                    'ติดตามไรเดอร์',
+                    style: TextStyle(color: Colors.deepPurple),
+                  ),
+                  onPressed: () {
+                    // TODO: Implement navigation to Rider Tracking Map Page
+                    print("Navigate to Rider Tracking Map");
+                  },
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ), // Adjust padding
+                    // Add border or background if desired
+                    // side: BorderSide(color: Colors.deepPurple),
+                    // backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                  ),
+                ),
+              ],
             ),
+            // --- ^^^ CHANGED ^^^ ---
             const SizedBox(height: 16),
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -119,6 +145,9 @@ class _SendProductPageState extends State<SendProductPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
+                  // Print the detailed error to the console for debugging
+                  print("Firestore Stream Error: ${snapshot.error}");
+                  print("Stack trace: ${snapshot.stackTrace}");
                   return Center(
                     child: Text('เกิดข้อผิดพลาด: ${snapshot.error}'),
                   );
@@ -152,40 +181,37 @@ class _SendProductPageState extends State<SendProductPage> {
 
                 final products = snapshot.data!.docs;
 
-                // --- CHANGED: Used ListView.separated for spacing ---
-                return ListView.separated(
-                  physics: const NeverScrollableScrollPhysics(), // Important
-                  shrinkWrap: true, // Important
-                  itemCount: products.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 16),
-                  itemBuilder: (context, index) {
-                    final productDoc = products[index];
+                // --- CHANGED: Use Column + map instead of ListView.separated ---
+                return Column(
+                  children: products.map((productDoc) {
                     final data = productDoc.data() as Map<String, dynamic>;
-
                     final statusInfo = _getStatusInfo(data['status'] ?? 0);
-
                     final timestamp = data['sendDate'] as Timestamp?;
                     final dateString = timestamp != null
                         ? _formatDate(timestamp)
                         : 'ไม่มีข้อมูลวันที่';
 
-                    return _buildProductCard(
-                      productName: data['itemName'] ?? 'ไม่มีชื่อสินค้า',
-                      receiverName: data['receiverName'] ?? 'N/A',
-                      deliveryDate: dateString,
-                      address: data['receiverAddress'] ?? 'N/A',
-                      status: statusInfo['text'],
-                      statusColor: statusInfo['color'],
+                    // Add some spacing between cards manually
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16.0),
+                      child: _buildProductCard(
+                        productId: productDoc.id,
+                        productName: data['itemName'] ?? 'ไม่มีชื่อสินค้า',
+                        receiverName: data['receiverName'] ?? 'N/A',
+                        deliveryDate: dateString,
+                        address: data['receiverAddress'] ?? 'N/A',
+                        status: statusInfo['text'],
+                        statusColor: statusInfo['color'],
+                      ),
                     );
-                  },
+                  }).toList(),
                 );
+                // --- END CHANGE ---
               },
             ),
           ],
         ),
       ),
-      // --- ^^^ CHANGED: เปลี่ยน body เป็น StreamBuilder ^^^ ---
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           if (phone != null) {
@@ -219,6 +245,7 @@ class _SendProductPageState extends State<SendProductPage> {
   }
 
   Widget _buildProductCard({
+    required String productId,
     required String productName,
     required String receiverName,
     required String deliveryDate,
@@ -226,8 +253,9 @@ class _SendProductPageState extends State<SendProductPage> {
     required String status,
     required Color statusColor,
   }) {
+    // --- REMOVED: margin from Container ---
     return Container(
-      margin: const EdgeInsets.only(bottom: 16.0),
+      // margin: const EdgeInsets.only(bottom: 16.0), // Removed margin
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.deepPurple.withOpacity(0.1),
@@ -246,6 +274,7 @@ class _SendProductPageState extends State<SendProductPage> {
               ),
               const SizedBox(width: 12),
               Expanded(
+                // This Expanded is correctly placed inside a Row
                 child: Text(
                   productName,
                   style: const TextStyle(
@@ -316,7 +345,14 @@ class _SendProductPageState extends State<SendProductPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () {
+                Get.to(
+                  () => StatusPage(
+                    productId: productId,
+                    userRole: UserRole.sender, // Sender role for this page
+                  ),
+                );
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
                 shape: RoundedRectangleBorder(

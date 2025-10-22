@@ -237,14 +237,13 @@ class _AddproductpageState extends State<Addproductpage> {
         'senderLat': senderAddress.latitude,
         'senderLng': senderAddress.longitude,
 
-        // --- ADDED: Save product info ---
         'itemName': _productNameController.text.trim(),
         'itemDescription': _productDetailsController.text.trim(),
 
         // --- CHANGED: Renamed to createdAt for consistency ---
         'sendDate': FieldValue.serverTimestamp(),
 
-        'status': 1,
+        'status': 0,
       };
 
       // --- vvv ADDED: Diagnostic logging ---

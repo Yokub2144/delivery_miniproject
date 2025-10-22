@@ -1,3 +1,4 @@
+import 'package:delivery_miniproject/pages/statusPage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
@@ -49,7 +50,7 @@ class _ReceiveProductPageState extends State<ReceiveProductPage> {
       case 4:
         return {'text': 'รับสำเร็จ', 'color': Colors.green};
       default:
-        return {'text': 'ไม่ทราบสถานะ', 'color': Colors.grey};
+        return {'text': 'รออัพเดตสถานะ', 'color': Colors.grey};
     }
   }
 
@@ -161,6 +162,7 @@ class _ReceiveProductPageState extends State<ReceiveProductPage> {
                         : 'ไม่มีข้อมูลวันที่';
 
                     return _buildProductCard(
+                      productId: productDoc.id,
                       productName: data['itemName'] ?? 'ไม่มีชื่อสินค้า',
                       senderName:
                           data['senderName'] ??
@@ -203,6 +205,7 @@ class _ReceiveProductPageState extends State<ReceiveProductPage> {
 
   // --- vvv CHANGED: Widget นี้ถูกแก้ไขเล็กน้อยเพื่อแสดงข้อมูลผู้ส่ง vvv ---
   Widget _buildProductCard({
+    required String productId,
     required String productName,
     required String senderName, // เปลี่ยนจาก receiverName
     required String deliveryDate,
@@ -299,7 +302,14 @@ class _ReceiveProductPageState extends State<ReceiveProductPage> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () {
+                Get.to(
+                  () => StatusPage(
+                    productId: productId,
+                    userRole: UserRole.receiver,
+                  ),
+                );
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
                 shape: RoundedRectangleBorder(

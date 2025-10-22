@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
+import 'package:delivery_miniproject/pages/user/profilePage.dart';
+import 'package:get/get.dart';
 import 'package:longdo_maps_api3_flutter/longdo_maps_api3_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1047,8 +1049,8 @@ class _AddAddressPageState extends State<AddAddressPage> {
                           .update({'defaultAddressId': _selectedAddress!.id});
 
                       if (mounted) {
-                        // 2. Pop กลับไปหน้าเดิมพร้อมส่ง AddressModel ที่เลือก
-                        Navigator.pop(context, _selectedAddress);
+                        Get.to(() => Profilepage());
+                        // Navigator.pop(context, _selectedAddress);
                       }
                     } catch (e) {
                       if (mounted) {
