@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 import 'package:delivery_miniproject/pages/loginRiderPage.dart';
-import 'package:delivery_miniproject/pages/statusPage.dart'; // <-- 1. เพิ่ม Import StatusPage
-import 'package:delivery_miniproject/pages/statusPage.dart'
-    as sp; // <-- 2. เพิ่ม Import สำหรับ UserRole
+import 'package:delivery_miniproject/pages/statusPage.dart';
+import 'package:delivery_miniproject/pages/statusPage.dart' as sp;
 
 class RiderMainPage extends StatefulWidget {
   final String riderId;
@@ -30,19 +29,8 @@ class _RiderMainPageState extends State<RiderMainPage> {
         .snapshots();
   }
 
-  Future<void> _acceptOrder({
-    required String orderId,
-    required String customerName,
-    required String customerPhone,
-    required String pickupAddress,
-    required String pickupLat,
-    required String pickupLon,
-    required String firstItem,
-    required String secondItem,
-    required String destinationAddress,
-    required String destinationLat,
-    required String destinationLon,
-  }) async {
+  // --- [CHANGED] ลดพารามิเตอร์ลง เหลือแค่ orderId ---
+  Future<void> _acceptOrder({required String orderId}) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -55,28 +43,16 @@ class _RiderMainPageState extends State<RiderMainPage> {
           .doc(orderId)
           .update({'status': 2, 'riderId': widget.riderId});
 
-      if (mounted) Navigator.pop(context); // ปิด Dialog
+      if (mounted) Navigator.pop(context);
 
       if (mounted) {
+        // --- [CHANGED] ส่งแค่ orderId และ riderId ---
         Get.to(
-          () => PickupDetailPage(
-            orderId: orderId,
-            customerName: customerName,
-            customerPhone: customerPhone,
-            pickupAddress: pickupAddress,
-            pickupLat: pickupLat,
-            pickupLon: pickupLon,
-            firstItem: firstItem,
-            secondItem: secondItem,
-            destinationAddress: destinationAddress,
-            destinationLat: destinationLat,
-            destinationLon: destinationLon,
-            riderId: widget.riderId,
-          ),
+          () => PickupDetailPage(orderId: orderId, riderId: widget.riderId),
         );
       }
     } catch (e) {
-      if (mounted) Navigator.pop(context); // ปิด Dialog
+      if (mounted) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('เกิดข้อผิดพลาดในการรับงาน: $e')),
@@ -85,7 +61,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
     }
   }
 
-  // --- การ์ดสำหรับงานใหม่ (Status 1) ---
+  // --- [CHANGED] การ์ดงานใหม่ - ลดพารามิเตอร์ ---
   Widget _buildOrderCard({
     required String orderId,
     required String firstItem,
@@ -94,10 +70,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
     required String destinationAddress,
     required String customerName,
     required String customerPhone,
-    required String pickupLat,
-    required String pickupLon,
-    required String destinationLat,
-    required String destinationLon,
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
@@ -293,19 +265,8 @@ class _RiderMainPageState extends State<RiderMainPage> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () {
-                  _acceptOrder(
-                    orderId: orderId,
-                    customerName: customerName,
-                    customerPhone: customerPhone,
-                    pickupAddress: pickupAddress,
-                    pickupLat: pickupLat,
-                    pickupLon: pickupLon,
-                    firstItem: firstItem,
-                    secondItem: secondItem,
-                    destinationAddress: destinationAddress,
-                    destinationLat: destinationLat,
-                    destinationLon: destinationLon,
-                  );
+                  // --- [CHANGED] ส่งแค่ orderId ---
+                  _acceptOrder(orderId: orderId);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF6A5ACD),
@@ -331,7 +292,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
     );
   }
 
-  // --- vvv [แก้ไข] การ์ดสำหรับงานที่รับแล้ว (Status 2, 3) vvv ---
+  // --- [CHANGED] การ์ดงานที่รับแล้ว - ลดพารามิเตอร์ ---
   Widget _buildAcceptedOrderCard({
     required String orderId,
     required String firstItem,
@@ -340,11 +301,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
     required String destinationAddress,
     required String customerName,
     required String customerPhone,
-    // [เพิ่ม] 4 field นี้
-    required String pickupLat,
-    required String pickupLon,
-    required String destinationLat,
-    required String destinationLon,
   }) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
@@ -476,7 +432,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
           ),
           const SizedBox(height: 24),
 
-          // --- vvv [เพิ่ม] ปุ่มที่ 1: "ไปที่แผนที่" vvv ---
+          // --- [CHANGED] ปุ่มไปที่แผนที่ - ส่งแค่ orderId และ riderId ---
           Center(
             child: SizedBox(
               width: double.infinity,
@@ -485,16 +441,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
                   Get.to(
                     () => PickupDetailPage(
                       orderId: orderId,
-                      customerName: customerName,
-                      customerPhone: customerPhone,
-                      pickupAddress: pickupAddress,
-                      pickupLat: pickupLat, // ส่ง lat
-                      pickupLon: pickupLon, // ส่ง lon
-                      firstItem: firstItem,
-                      secondItem: secondItem,
-                      destinationAddress: destinationAddress,
-                      destinationLat: destinationLat, // ส่ง lat
-                      destinationLon: destinationLon, // ส่ง lon
                       riderId: widget.riderId,
                     ),
                   );
@@ -516,9 +462,9 @@ class _RiderMainPageState extends State<RiderMainPage> {
             ),
           ),
 
-          // --- ^^^ [เพิ่ม] สิ้นสุดปุ่มที่ 1 ^^^ ---
-          const SizedBox(height: 12), // เว้นวรรคระหว่างปุ่ม
-          // --- ปุ่มที่ 2: "ดูสถานะ" (ของเดิม) ---
+          const SizedBox(height: 12),
+
+          // ปุ่มดูสถานะ
           Center(
             child: SizedBox(
               width: double.infinity,
@@ -527,7 +473,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                   Get.to(
                     () => StatusPage(
                       productId: orderId,
-                      userRole: sp.UserRole.sender,
+                      userRole: sp.UserRole.rider,
                     ),
                   );
                 },
@@ -551,7 +497,6 @@ class _RiderMainPageState extends State<RiderMainPage> {
       ),
     );
   }
-  // --- ^^^ [แก้ไข] สิ้นสุดการ์ดใหม่ ^^^ ---
 
   @override
   Widget build(BuildContext context) {
@@ -719,7 +664,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                   },
             ),
 
-            // --- vvv [แก้ไข] ส่วนที่ 1: งานที่กำลังทำ vvv ---
+            // งานที่กำลังทำ
             const SizedBox(height: 16),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
@@ -766,7 +711,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                     final productDoc = products[index];
                     final data = productDoc.data() as Map<String, dynamic>;
 
-                    // --- [แก้ไข] เรียกใช้การ์ดใหม่ และส่ง Lat/Lon ---
+                    // --- [CHANGED] ลดพารามิเตอร์ ---
                     return _buildAcceptedOrderCard(
                       orderId: productDoc.id,
                       firstItem: data['itemName'] ?? 'ไม่มีชื่อสินค้า',
@@ -775,19 +720,13 @@ class _RiderMainPageState extends State<RiderMainPage> {
                       destinationAddress: data['receiverAddress'] ?? 'N/A',
                       customerName: data['senderName'] ?? 'N/A',
                       customerPhone: data['senderPhone'] ?? '',
-                      // [เพิ่ม] 4 field นี้
-                      pickupLat: data['senderLat']?.toString() ?? '0.0',
-                      pickupLon: data['senderLng']?.toString() ?? '0.0',
-                      destinationLat: data['receiverLat']?.toString() ?? '0.0',
-                      destinationLon: data['receiverLng']?.toString() ?? '0.0',
                     );
                   },
                 );
               },
             ),
-            // --- ^^^ [แก้ไข] สิ้นสุดส่วนที่ 1 ^^^ ---
 
-            // --- vvv ส่วนที่ 2: ออเดอร์ใหม่ (ของเดิม) vvv ---
+            // ออเดอร์ใหม่
             const SizedBox(height: 24),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16.0),
@@ -844,6 +783,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                     final productDoc = products[index];
                     final data = productDoc.data() as Map<String, dynamic>;
 
+                    // --- [CHANGED] ลดพารามิเตอร์ ---
                     return _buildOrderCard(
                       orderId: productDoc.id,
                       firstItem: data['itemName'] ?? 'ไม่มีชื่อสินค้า',
@@ -852,16 +792,11 @@ class _RiderMainPageState extends State<RiderMainPage> {
                       destinationAddress: data['receiverAddress'] ?? 'N/A',
                       customerName: data['senderName'] ?? 'N/A',
                       customerPhone: data['senderPhone'] ?? '',
-                      pickupLat: data['senderLat']?.toString() ?? '0.0',
-                      pickupLon: data['senderLng']?.toString() ?? '0.0',
-                      destinationLat: data['receiverLat']?.toString() ?? '0.0',
-                      destinationLon: data['receiverLng']?.toString() ?? '0.0',
                     );
                   },
                 );
               },
             ),
-            // --- ^^^ สิ้นสุดส่วนที่ 2 ^^^ ---
             const SizedBox(height: 16),
           ],
         ),
