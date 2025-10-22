@@ -118,7 +118,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
 
         debugPrint('📍 Pickup: $_pickupLat, $_pickupLon');
         debugPrint('📍 Destination: $_destinationLat, $_destinationLon');
-        debugPrint('🔢 Status: $_currentStatus');
+        debugPrint('📢 Status: $_currentStatus');
 
         _initializeMap();
       }
@@ -375,111 +375,139 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     }
   }
 
-  // ---------- ⬇️ [ปรับปรุงโค้ดส่วนนี้] ⬇️ ----------
+  // ---------- ⬇️ [ส่วนแผนที่ที่แก้ไขแล้ว] ⬇️ ----------
   String _buildMapHtml() {
     return '''
 <!DOCTYPE html>
 <html>
 <head>
   <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+  <meta charset="utf-8">
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
     #map { height: 100%; }
   </style>
   <script src="https://api.longdo.com/map/?key=$longdoMapApiKey"></script>
+</head>
+<body>
+  <div id="map"></div>
+  
   <script>
-    let map;
+    var map;
+    var pickupMarker;
+    var destinationMarker;
 
-    function init() {
+    // รอให้ DOM โหลดเสร็จก่อน
+    window.onload = function() {
+      initMap();
+    };
+
+    function initMap() {
       try {
-        console.log('🗺️ Initializing map...');
+        console.log('🗺️ Initializing Longdo Map...');
         
+        // สร้างแผนที่
         map = new longdo.Map({
           placeholder: document.getElementById('map'),
           language: 'th'
         });
 
-        // --- NEW: รับค่าพิกัดและตรวจสอบ ---
-        const pickupLat = $_pickupLat;
-        const pickupLon = $_pickupLon;
-        const destLat = $_destinationLat;
-        const destLon = $_destinationLon;
+        console.log('✅ Map created');
 
-        const isPickupValid = (pickupLat !== 0.0 && pickupLon !== 0.0);
-        const isDestValid = (destLat !== 0.0 && destLon !== 0.0);
+        // รับค่าพิกัดจาก Dart
+        var pickupLat = $_pickupLat;
+        var pickupLon = $_pickupLon;
+        var destLat = $_destinationLat;
+        var destLon = $_destinationLon;
 
-        let centerLat = 13.7563; // ค่าเริ่มต้น: กรุงเทพ
-        let centerLon = 100.5018; // ค่าเริ่มต้น: กรุงเทพ
-        let zoom = 10; // ซูมเริ่มต้น
+        console.log('📍 Pickup:', pickupLat, pickupLon);
+        console.log('📍 Destination:', destLat, destLon);
 
-        // --- NEW: ตรรกะการตั้งจุดศูนย์กลางแผนที่ ---
+        var isPickupValid = (pickupLat !== 0.0 && pickupLon !== 0.0);
+        var isDestValid = (destLat !== 0.0 && destLon !== 0.0);
+
+        // ตั้งค่าศูนย์กลางและซูมของแผนที่
+        var centerLat = 13.7563;  // กรุงเทพฯ เริ่มต้น
+        var centerLon = 100.5018;
+        var zoom = 10;
+
         if (isPickupValid && isDestValid) {
-          // ถ้ามี 2 หมุด ให้หาจุดกึ่งกลาง
+          // หาจุดกึ่งกลางระหว่าง 2 จุด
           centerLon = (pickupLon + destLon) / 2;
           centerLat = (pickupLat + destLat) / 2;
           zoom = 13;
         } else if (isPickupValid) {
-          // ถ้ามีแค่หมุดรับ
           centerLon = pickupLon;
           centerLat = pickupLat;
           zoom = 14;
         } else if (isDestValid) {
-          // ถ้ามีแค่หมุดส่ง
           centerLon = destLon;
           centerLat = destLat;
           zoom = 14;
         }
-        
+
+        // ตั้งค่าตำแหน่งและซูม
         map.location({ lon: centerLon, lat: centerLat }, true);
         map.zoom(zoom, true);
 
-        // --- NEW: เพิ่มหมุดเฉพาะพิกัดที่ถูกต้อง ---
+        console.log('🎯 Map centered at:', centerLat, centerLon, 'zoom:', zoom);
+
+        // เพิ่มหมุดรับสินค้า (ใช้ไอคอนเริ่มต้นสีแดง)
         if (isPickupValid) {
-          console.log('📍 Adding pickup marker at:', pickupLon, pickupLat);
-          const pickupMarker = new longdo.Marker(
+          console.log('📌 Adding PICKUP marker...');
+          
+          pickupMarker = new longdo.Marker(
             { lon: pickupLon, lat: pickupLat },
-            { 
+            {
               title: 'จุดรับสินค้า',
               detail: '$_pickupAddress',
-              icon: { url: 'https://map.longdo.com/mmmap/images/pin_red.png' }
-            } 
+              icon: {
+                html: '<div style="width:30px;height:30px;background-color:#FF0000;border-radius:50%;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>',
+                offset: { x: 15, y: 15 }
+              }
+            }
           );
+          
           map.Overlays.add(pickupMarker);
           console.log('✅ Pickup marker added');
         } else {
-          console.log('⚠️ Invalid pickup coords. Skipping marker.');
+          console.warn('⚠️ Invalid pickup coordinates');
         }
 
+        // เพิ่มหมุดปลายทาง (ใช้ไอคอนเริ่มต้นสีน้ำเงิน)
         if (isDestValid) {
-          console.log('📍 Adding destination marker at:', destLon, destLat);
-          const destinationMarker = new longdo.Marker(
-            { lon: destLon, lat: destLat }, 
-            { 
+          console.log('📌 Adding DESTINATION marker...');
+          
+          destinationMarker = new longdo.Marker(
+            { lon: destLon, lat: destLat },
+            {
               title: 'จุดส่งสินค้า',
               detail: '$_destinationAddress',
-              icon: { url: 'https://map.longdo.com/mmmap/images/pin_blue.png' }
+              icon: {
+                html: '<div style="width:30px;height:30px;background-color:#0066FF;border-radius:50%;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>',
+                offset: { x: 15, y: 15 }
+              }
             }
           );
+          
           map.Overlays.add(destinationMarker);
           console.log('✅ Destination marker added');
         } else {
-          console.log('⚠️ Invalid destination coords. Skipping marker.');
+          console.warn('⚠️ Invalid destination coordinates');
         }
 
         console.log('🎉 Map initialization complete!');
-      } catch (e) {
-        console.error('❌ Error:', e);
+        
+      } catch (error) {
+        console.error('❌ Error initializing map:', error);
       }
     }
   </script>
-</head>
-<body onload="init();">
-  <div id="map"></div>
 </body>
 </html>
     ''';
   }
-  // ---------- ⬆️ [ปรับปรุงโค้ดส่วนนี้] ⬆️ ----------
+  // ---------- ⬆️ [ส่วนแผนที่ที่แก้ไขแล้ว] ⬆️ ----------
 
   @override
   Widget build(BuildContext context) {
