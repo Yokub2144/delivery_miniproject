@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'package:path_provider/path_provider.dart';
+
 import 'package:path/path.dart' as p;
 import 'package:cloudinary_public/cloudinary_public.dart';
 
@@ -29,7 +30,10 @@ class PickupDetailPage extends StatefulWidget {
 class _PickupDetailPageState extends State<PickupDetailPage> {
   final String longdoMapApiKey = 'ba51dc98b3fd0dd3bb1ab2224a3e36d1';
   late WebViewController _webViewController;
+
   bool _isPageFinished = false;
+  bool _isMapReady = false;
+
   bool _isDataLoaded = false;
   StreamSubscription<Position>? _positionStreamSubscription;
 
@@ -55,6 +59,10 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   final ImagePicker _picker = ImagePicker();
   bool _isUploading = false;
 
+  // ⭐ เพิ่ม Timer สำหรับ force update
+  Timer? _updateTimer;
+  int _updateCounter = 0;
+
   final cloudinary = CloudinaryPublic(
     'dzicj4dci',
     'flutter_unsigned',
@@ -70,6 +78,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   @override
   void dispose() {
     _positionStreamSubscription?.cancel();
+    _updateTimer?.cancel();
     super.dispose();
   }
 
@@ -113,11 +122,15 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
           _currentStatus = productData['status'] ?? 2;
           _riderName = riderData['name'] ?? 'ไรเดอร์';
 
+          _currentRiderLat = (riderData['currentLat'] ?? _pickupLat).toDouble();
+          _currentRiderLon = (riderData['currentLng'] ?? _pickupLon).toDouble();
+
           _isDataLoaded = true;
         });
 
         debugPrint('📍 Pickup: $_pickupLat, $_pickupLon');
         debugPrint('📍 Destination: $_destinationLat, $_destinationLon');
+        debugPrint('🏍️ Rider Initial: $_currentRiderLat, $_currentRiderLon');
         debugPrint('📢 Status: $_currentStatus');
 
         _initializeMap();
@@ -171,15 +184,50 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     return true;
   }
 
+  void _checkAndStartTracking() {
+    if (_isPageFinished && _isMapReady && _positionStreamSubscription == null) {
+      debugPrint('✅✅✅ ทั้ง Page และ Map พร้อมแล้ว. เริ่มติดตามตำแหน่ง!');
+      _startLocationTracking();
+      // ⭐ เริ่ม Timer สำหรับ force update ทุก 2 วินาที
+      _startForceUpdateTimer();
+    } else {
+      debugPrint(
+        '⏳ กำลังรอ... PageFinished: $_isPageFinished, MapReady: $_isMapReady',
+      );
+    }
+  }
+
+  // ⭐ เพิ่มฟังก์ชัน Force Update เพื่อบังคับให้แผนที่อัปเดต
+  void _startForceUpdateTimer() {
+    _updateTimer?.cancel();
+    _updateTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (_currentRiderLat != null && _currentRiderLon != null && _isMapReady) {
+        _updateCounter++;
+        debugPrint(
+          '⏰ Force update #$_updateCounter: $_currentRiderLon, $_currentRiderLat',
+        );
+
+        _webViewController.runJavaScript('''
+          console.log('⏰ Timer force update #$_updateCounter');
+          if (typeof updateRiderLocation === 'function') {
+            updateRiderLocation($_currentRiderLon, $_currentRiderLat);
+          } else {
+            console.error('❌ updateRiderLocation function not found!');
+          }
+        ''');
+      }
+    });
+  }
+
   Future<void> _startLocationTracking() async {
     bool hasPermission = await _checkLocationPermission();
-    if (!hasPermission) return;
+    if (!hasPermission || !mounted) return;
 
     try {
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      _updateRiderPosition(position);
+      if (mounted) _updateRiderPosition(position);
     } catch (e) {
       debugPrint('Error getting initial position: $e');
     }
@@ -207,7 +255,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
             'currentLng': lng,
             'lastUpdated': FieldValue.serverTimestamp(),
           });
-      debugPrint('อัพเดทตำแหน่งไรเดอร์สำเร็จ: $lat, $lng');
+      debugPrint('✅ อัปเดตตำแหน่งไรเดอร์สำเร็จ: $lat, $lng');
     } catch (e) {
       debugPrint('Error updating rider location: $e');
     }
@@ -223,11 +271,19 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
 
     _updateRiderLocationToFirestore(position.latitude, position.longitude);
 
-    // อัพเดทตำแหน่งไรเดอร์บนแผนที่แบบเรียลไทม์
-    if (_isPageFinished) {
+    // ⭐ อัปเดตแผนที่ทันที + ใช้ try-catch
+    try {
       _webViewController.runJavaScript('''
-        updateRiderLocation(${position.longitude}, ${position.latitude});
+        console.log('🔄 GPS Update: ${position.longitude}, ${position.latitude}');
+        if (typeof updateRiderLocation === 'function') {
+          updateRiderLocation(${position.longitude}, ${position.latitude});
+          console.log('✅ Rider updated successfully');
+        } else {
+          console.error('❌ updateRiderLocation not defined yet!');
+        }
       ''');
+    } catch (e) {
+      debugPrint('⚠️ Error calling JS: $e');
     }
 
     final double targetLat = _currentStatus == 2 ? _pickupLat : _destinationLat;
@@ -256,15 +312,33 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     _webViewController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
+      ..addJavaScriptChannel(
+        'MapReady',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('✅ JavaScript Map พร้อมแล้ว!');
+          if (mounted) {
+            setState(() {
+              _isMapReady = true;
+            });
+            _checkAndStartTracking();
+          }
+        },
+      )
+      ..addJavaScriptChannel(
+        'DebugLog',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🟦 JS Log: ${message.message}');
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (String url) async {
             if (mounted) {
+              debugPrint('✅ WebView Page Finished (HTML loaded)');
               setState(() {
                 _isPageFinished = true;
               });
-              debugPrint('✅ Map loaded successfully');
-              _startLocationTracking();
+              _checkAndStartTracking();
             }
           },
           onWebResourceError: (WebResourceError error) {
@@ -384,6 +458,9 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   }
 
   String _buildMapHtml() {
+    final double initialRiderLat = _currentRiderLat ?? _pickupLat;
+    final double initialRiderLon = _currentRiderLon ?? _pickupLon;
+
     return '''
 <!DOCTYPE html>
 <html>
@@ -402,6 +479,17 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
       font-size: 12px;
       white-space: nowrap;
     }
+    
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+      }
+      50% {
+        transform: scale(1.1);
+        box-shadow: 0 6px 16px rgba(76, 175, 80, 0.6);
+      }
+    }
   </style>
   <script src="https://api.longdo.com/map/?key=$longdoMapApiKey"></script>
 </head>
@@ -414,6 +502,16 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     var destinationMarker;
     var riderMarker;
     var routeLayer;
+    var routeService;
+    var updateCount = 0;
+
+    // ⭐ ฟังก์ชัน log ที่ส่งกลับไป Dart
+    function debugLog(msg) {
+      console.log(msg);
+      if (window.DebugLog) {
+        window.DebugLog.postMessage(msg);
+      }
+    }
 
     window.onload = function() {
       initMap();
@@ -421,157 +519,195 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
 
     function initMap() {
       try {
-        console.log('🗺️ Initializing Longdo Map...');
+        debugLog('🗺️ Initializing Longdo Map...');
         
         map = new longdo.Map({
           placeholder: document.getElementById('map'),
           language: 'th'
         });
 
-        console.log('✅ Map created');
+        debugLog('✅ Map object created');
 
         var pickupLat = $_pickupLat;
         var pickupLon = $_pickupLon;
         var destLat = $_destinationLat;
         var destLon = $_destinationLon;
-
-        console.log('📍 Pickup:', pickupLat, pickupLon);
-        console.log('📍 Destination:', destLat, destLon);
+        var riderLat = $initialRiderLat;
+        var riderLon = $initialRiderLon;
 
         var isPickupValid = (pickupLat !== 0.0 && pickupLon !== 0.0);
         var isDestValid = (destLat !== 0.0 && destLon !== 0.0);
 
-        var centerLat = 13.7563;
-        var centerLon = 100.5018;
-        var zoom = 10;
-
         if (isPickupValid && isDestValid) {
-          centerLon = (pickupLon + destLon) / 2;
-          centerLat = (pickupLat + destLat) / 2;
-          zoom = 13;
+          map.bound({
+            minLon: Math.min(pickupLon, destLon, riderLon) - 0.01,
+            minLat: Math.min(pickupLat, destLat, riderLat) - 0.01,
+            maxLon: Math.max(pickupLon, destLon, riderLon) + 0.01,
+            maxLat: Math.max(pickupLat, destLat, riderLat) + 0.01
+          });
         } else if (isPickupValid) {
-          centerLon = pickupLon;
-          centerLat = pickupLat;
-          zoom = 14;
-        } else if (isDestValid) {
-          centerLon = destLon;
-          centerLat = destLat;
-          zoom = 14;
+          map.location({ lon: riderLon, lat: riderLat }, true);
+          map.zoom(14, true);
+        } else {
+           map.location({ lon: riderLon, lat: riderLat }, true);
+           map.zoom(10, true);
         }
+        
+        debugLog('🎯 Map centered');
 
-        map.location({ lon: centerLon, lat: centerLat }, true);
-        map.zoom(zoom, true);
-
-        console.log('🎯 Map centered at:', centerLat, centerLon, 'zoom:', zoom);
-
-        // เพิ่มหมุดจุดรับสินค้า (สีแดง + ไอคอน + ป้ายชื่อ)
+        // เพิ่มหมุดจุดรับสินค้า
         if (isPickupValid) {
-          console.log('📌 Adding PICKUP marker...');
-          
           pickupMarker = new longdo.Marker(
             { lon: pickupLon, lat: pickupLat },
             {
               title: '🔴 จุดรับสินค้า',
               detail: '$_pickupAddress',
               icon: {
-                html: '<div style="text-align:center;"><div class="marker-label" style="background:#FF5252;color:white;margin-bottom:4px;">📦 รับที่นี่</div><div style="width:40px;height:40px;background:#FF5252;border-radius:50%;border:4px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:20px;">1</div></div>',
+                html: '<div style="text-align:center;"><div class="marker-label" style="background:#FF5252;color:white;margin-bottom:4px;">📦 รับที่นี่</div><div style="width:40px;height:40px;background:#FF5252;border-radius:50%;border:4px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:bold;color:white;">1</div></div>',
                 offset: { x: 20, y: 50 }
               }
             }
           );
-          
           map.Overlays.add(pickupMarker);
-          console.log('✅ Pickup marker added');
+          debugLog('✅ Pickup marker added');
         }
 
-        // เพิ่มหมุดจุดส่งสินค้า (สีน้ำเงิน + ไอคอน + ป้ายชื่อ)
+        // เพิ่มหมุดจุดส่งสินค้า
         if (isDestValid) {
-          console.log('📌 Adding DESTINATION marker...');
-          
           destinationMarker = new longdo.Marker(
             { lon: destLon, lat: destLat },
             {
               title: '🔵 จุดส่งสินค้า',
               detail: '$_destinationAddress',
               icon: {
-                html: '<div style="text-align:center;"><div class="marker-label" style="background:#2196F3;color:white;margin-bottom:4px;">🏠 ส่งที่นี่</div><div style="width:40px;height:40px;background:#2196F3;border-radius:50%;border:4px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:20px;">2</div></div>',
+                html: '<div style="text-align:center;"><div class="marker-label" style="background:#2196F3;color:white;margin-bottom:4px;">🏠 ส่งที่นี่</div><div style="width:40px;height:40px;background:#2196F3;border-radius:50%;border:4px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:bold;color:white;">2</div></div>',
                 offset: { x: 20, y: 50 }
               }
             }
           );
-          
           map.Overlays.add(destinationMarker);
-          console.log('✅ Destination marker added');
+          debugLog('✅ Destination marker added');
         }
 
-        // สร้างเส้นทางระหว่างจุดรับและจุดส่ง
+        // ⭐ สร้างหมุดไรเดอร์
+        debugLog('Creating rider marker at: ' + riderLon + ', ' + riderLat);
+        createRiderMarker(riderLon, riderLat);
+        
+        // สร้างเส้นทาง
         if (isPickupValid && isDestValid) {
           drawRoute(pickupLon, pickupLat, destLon, destLat);
         }
 
-        // สร้างหมุดไรเดอร์ (จะอัพเดทตำแหน่งแบบเรียลไทม์)
-        createRiderMarker(centerLon, centerLat);
-
-        console.log('🎉 Map initialization complete!');
+        debugLog('🎉 Map initialization complete!');
+        
+        // ส่งสัญญาณบอก Dart ว่าพร้อมแล้ว
+        if (window.MapReady) {
+          window.MapReady.postMessage('ready');
+        }
         
       } catch (error) {
-        console.error('❌ Error:', error);
+        debugLog('❌ Init Error: ' + error.message);
       }
     }
 
-    // ฟังก์ชันสร้างหมุดไรเดอร์
+    // ⭐ สร้างหมุดไรเดอร์
     function createRiderMarker(lon, lat) {
+      if (riderMarker) {
+         debugLog('⚠️ Rider marker already exists, removing old one');
+         map.Overlays.remove(riderMarker);
+         riderMarker = null;
+      }
+      
+      debugLog('✅ Creating NEW rider marker at: ' + lon + ', ' + lat);
+      
       riderMarker = new longdo.Marker(
         { lon: lon, lat: lat },
         {
           title: '🏍️ ไรเดอร์',
           detail: 'ตำแหน่งปัจจุบัน',
           icon: {
-            html: '<div style="width:50px;height:50px;background:#4CAF50;border-radius:50%;border:4px solid white;box-shadow:0 4px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:24px;animation:pulse 2s infinite;">🏍️</div><style>@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}</style>',
-            offset: { x: 25, y: 25 }
+            html: '<div style="width:52px;height:52px;background:#4CAF50;border-radius:50%;border:5px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;animation:pulse 2s infinite;font-size:32px;">🏍️</div>',
+            offset: { x: 26, y: 26 } 
           }
         }
       );
-      map.Overlays.add(riderMarker);
-      console.log('✅ Rider marker created');
+      
+      try {
+        map.Overlays.add(riderMarker);
+        debugLog('✅ Rider marker added to map successfully');
+      } catch (e) {
+        debugLog('❌ Error adding rider marker: ' + e.message);
+      }
     }
-
-    // ฟังก์ชันอัพเดทตำแหน่งไรเดอร์แบบเรียลไทม์
+    
+    // ⭐ อัปเดตตำแหน่งไรเดอร์
     function updateRiderLocation(lon, lat) {
-      if (riderMarker) {
-        riderMarker.location({ lon: lon, lat: lat });
-        console.log('🔄 Rider position updated:', lon, lat);
+      updateCount++;
+      debugLog('🔄 Update #' + updateCount + ': ' + lon + ', ' + lat);
+      
+      try {
+        if (riderMarker) {
+          // ⭐ ใช้ location() เพื่ออัปเดตตำแหน่ง
+          riderMarker.location({ lon: lon, lat: lat });
+          debugLog('✅ Rider moved to new position');
+        } else {
+          debugLog('⚠️ Rider marker is null, creating new one');
+          createRiderMarker(lon, lat);
+        }
+      } catch (e) {
+        debugLog('❌ Update error: ' + e.message);
+        // ถ้าเกิด error ให้สร้างใหม่
+        createRiderMarker(lon, lat);
       }
     }
 
-    // ฟังก์ชันวาดเส้นทาง
     function drawRoute(fromLon, fromLat, toLon, toLat) {
       try {
-        // ลบเส้นทางเก่า (ถ้ามี)
-        if (routeLayer) {
-          map.Overlays.remove(routeLayer);
+        debugLog('Drawing route...');
+        
+        if (!routeService) {
+          routeService = new longdo.RouteService(map, {
+            language: 'th'
+          });
+        } else {
+          routeService.clear(); 
+          if (routeLayer) {
+             map.Overlays.remove(routeLayer);
+             routeLayer = null;
+          }
         }
 
-        // สร้างเส้นทางใหม่
-        routeLayer = new longdo.Polyline(
-          [
-            { lon: fromLon, lat: fromLat },
-            { lon: toLon, lat: toLat }
-          ],
-          {
-            title: 'เส้นทาง',
-            lineWidth: 5,
-            lineColor: 'rgba(103, 58, 183, 0.8)',
-            arrow: true
+        var fromPt = { lon: fromLon, lat: fromLat };
+        var toPt = { lon: toLon, lat: toLat };
+
+        routeService.search(fromPt, toPt, { mode: 1 }, function(result) {
+          if (result && result.data && result.data.length > 0) {
+            routeLayer = routeService.addRouteToMap(result.data[0]); 
+            
+            if (routeLayer && routeLayer.setLineStyle) {
+                routeLayer.setLineStyle({
+                    lineWidth: 5,
+                    lineColor: 'rgba(103, 58, 183, 0.8)'
+                });
+            }
+            debugLog('✅ Route drawn');
+          } else {
+            routeLayer = new longdo.Polyline([fromPt, toPt], {
+                title: 'เส้นทาง (ประมาณ)',
+                lineWidth: 5,
+                lineColor: 'rgba(255, 0, 0, 0.5)',
+                lineStyle: 'dashed'
+            });
+            map.Overlays.add(routeLayer);
+            debugLog('⚠️ Using fallback straight line');
           }
-        );
-        
-        map.Overlays.add(routeLayer);
-        console.log('✅ Route drawn');
+        });
+
       } catch (error) {
-        console.error('❌ Error drawing route:', error);
+        debugLog('❌ Route error: ' + error.message);
       }
     }
+    
   </script>
 </body>
 </html>
@@ -588,7 +724,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
               bottom: false,
               child: WebViewWidget(controller: _webViewController),
             ),
-          if (!_isDataLoaded || !_isPageFinished)
+          if (!_isDataLoaded || !_isPageFinished || !_isMapReady)
             Container(
               color: Colors.white,
               child: const Center(
@@ -598,14 +734,14 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                     CircularProgressIndicator(color: Color(0xFF6F35A5)),
                     SizedBox(height: 16),
                     Text(
-                      'กำลังโหลดข้อมูล...',
+                      'กำลังโหลดแผนที่...',
                       style: TextStyle(fontSize: 16, color: Color(0xFF6F35A5)),
                     ),
                   ],
                 ),
               ),
             ),
-          if (_isDataLoaded && _isPageFinished) ...[
+          if (_isDataLoaded && _isPageFinished && _isMapReady) ...[
             _buildEstimateInfo(),
             _buildControlButtons(),
             _buildDraggableSheet(),
@@ -632,6 +768,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     );
   }
 
+  // --- START: โค้ดที่ขาดหายไป ---
   Widget _buildEstimateInfo() {
     final String titleText = _currentStatus == 2
         ? 'ระยะทางไปจุดรับสินค้า'
@@ -875,7 +1012,8 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         );
       }
 
-      bool isNearPickup = distance != null && distance <= 20;
+      // เพิ่มระยะเผื่อเป็น 50 เมตร
+      bool isNearPickup = distance != null && distance <= 50;
 
       return Column(
         children: [
@@ -894,20 +1032,19 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'คุณอยู่ห่างจากจุดรับ ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 20 เมตร',
-                      style: TextStyle(color: Colors.orange),
+                      'คุณอยู่ห่างจากจุดรับ ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 50 เมตร',
+                      style: TextStyle(color: Colors.orange.shade800),
                     ),
                   ),
                 ],
               ),
             ),
-
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: isNearPickup
                   ? () => _takePhotoAndUpdateStatus(3)
-                  : null, // ปิดปุ่มถ้าห่างเกิน 20 เมตร
+                  : null, // ปิดปุ่มถ้าห่างเกิน 50 เมตร
               icon: Icon(Icons.camera_alt),
               label: Text(
                 isNearPickup
@@ -940,7 +1077,8 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         );
       }
 
-      bool isNearDestination = distance != null && distance <= 20;
+      // เพิ่มระยะเผื่อเป็น 50 เมตร
+      bool isNearDestination = distance != null && distance <= 50;
 
       return Column(
         children: [
@@ -959,14 +1097,13 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'คุณอยู่ห่างจากจุดส่ง ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 20 เมตร',
-                      style: TextStyle(color: Colors.orange),
+                      'คุณอยู่ห่างจากจุดส่ง ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 50 เมตร',
+                      style: TextStyle(color: Colors.orange.shade800),
                     ),
                   ),
                 ],
               ),
             ),
-
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -1023,4 +1160,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
       );
     }
   }
+
+  // --- END: โค้ดที่ขาดหายไป ---
 }
