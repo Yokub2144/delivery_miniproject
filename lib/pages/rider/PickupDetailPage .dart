@@ -215,12 +215,20 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
 
   void _updateRiderPosition(Position position) {
     if (!mounted) return;
+
     setState(() {
       _currentRiderLat = position.latitude;
       _currentRiderLon = position.longitude;
     });
 
     _updateRiderLocationToFirestore(position.latitude, position.longitude);
+
+    // อัพเดทตำแหน่งไรเดอร์บนแผนที่แบบเรียลไทม์
+    if (_isPageFinished) {
+      _webViewController.runJavaScript('''
+        updateRiderLocation(${position.longitude}, ${position.latitude});
+      ''');
+    }
 
     final double targetLat = _currentStatus == 2 ? _pickupLat : _destinationLat;
     final double targetLon = _currentStatus == 2 ? _pickupLon : _destinationLon;
@@ -375,7 +383,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     }
   }
 
-  // ---------- ⬇️ [ส่วนแผนที่ที่แก้ไขแล้ว] ⬇️ ----------
   String _buildMapHtml() {
     return '''
 <!DOCTYPE html>
@@ -386,6 +393,15 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
     #map { height: 100%; }
+    .marker-label {
+      background: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      font-size: 12px;
+      white-space: nowrap;
+    }
   </style>
   <script src="https://api.longdo.com/map/?key=$longdoMapApiKey"></script>
 </head>
@@ -396,8 +412,9 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
     var map;
     var pickupMarker;
     var destinationMarker;
+    var riderMarker;
+    var routeLayer;
 
-    // รอให้ DOM โหลดเสร็จก่อน
     window.onload = function() {
       initMap();
     };
@@ -406,7 +423,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
       try {
         console.log('🗺️ Initializing Longdo Map...');
         
-        // สร้างแผนที่
         map = new longdo.Map({
           placeholder: document.getElementById('map'),
           language: 'th'
@@ -414,7 +430,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
 
         console.log('✅ Map created');
 
-        // รับค่าพิกัดจาก Dart
         var pickupLat = $_pickupLat;
         var pickupLon = $_pickupLon;
         var destLat = $_destinationLat;
@@ -426,13 +441,11 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         var isPickupValid = (pickupLat !== 0.0 && pickupLon !== 0.0);
         var isDestValid = (destLat !== 0.0 && destLon !== 0.0);
 
-        // ตั้งค่าศูนย์กลางและซูมของแผนที่
-        var centerLat = 13.7563;  // กรุงเทพฯ เริ่มต้น
+        var centerLat = 13.7563;
         var centerLon = 100.5018;
         var zoom = 10;
 
         if (isPickupValid && isDestValid) {
-          // หาจุดกึ่งกลางระหว่าง 2 จุด
           centerLon = (pickupLon + destLon) / 2;
           centerLat = (pickupLat + destLat) / 2;
           zoom = 13;
@@ -446,60 +459,117 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
           zoom = 14;
         }
 
-        // ตั้งค่าตำแหน่งและซูม
         map.location({ lon: centerLon, lat: centerLat }, true);
         map.zoom(zoom, true);
 
         console.log('🎯 Map centered at:', centerLat, centerLon, 'zoom:', zoom);
 
-        // เพิ่มหมุดรับสินค้า (ใช้ไอคอนเริ่มต้นสีแดง)
+        // เพิ่มหมุดจุดรับสินค้า (สีแดง + ไอคอน + ป้ายชื่อ)
         if (isPickupValid) {
           console.log('📌 Adding PICKUP marker...');
           
           pickupMarker = new longdo.Marker(
             { lon: pickupLon, lat: pickupLat },
             {
-              title: 'จุดรับสินค้า',
+              title: '🔴 จุดรับสินค้า',
               detail: '$_pickupAddress',
               icon: {
-                html: '<div style="width:30px;height:30px;background-color:#FF0000;border-radius:50%;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>',
-                offset: { x: 15, y: 15 }
+                html: '<div style="text-align:center;"><div class="marker-label" style="background:#FF5252;color:white;margin-bottom:4px;">📦 รับที่นี่</div><div style="width:40px;height:40px;background:#FF5252;border-radius:50%;border:4px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:20px;">1</div></div>',
+                offset: { x: 20, y: 50 }
               }
             }
           );
           
           map.Overlays.add(pickupMarker);
           console.log('✅ Pickup marker added');
-        } else {
-          console.warn('⚠️ Invalid pickup coordinates');
         }
 
-        // เพิ่มหมุดปลายทาง (ใช้ไอคอนเริ่มต้นสีน้ำเงิน)
+        // เพิ่มหมุดจุดส่งสินค้า (สีน้ำเงิน + ไอคอน + ป้ายชื่อ)
         if (isDestValid) {
           console.log('📌 Adding DESTINATION marker...');
           
           destinationMarker = new longdo.Marker(
             { lon: destLon, lat: destLat },
             {
-              title: 'จุดส่งสินค้า',
+              title: '🔵 จุดส่งสินค้า',
               detail: '$_destinationAddress',
               icon: {
-                html: '<div style="width:30px;height:30px;background-color:#0066FF;border-radius:50%;border:3px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);"></div>',
-                offset: { x: 15, y: 15 }
+                html: '<div style="text-align:center;"><div class="marker-label" style="background:#2196F3;color:white;margin-bottom:4px;">🏠 ส่งที่นี่</div><div style="width:40px;height:40px;background:#2196F3;border-radius:50%;border:4px solid white;box-shadow:0 3px 6px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:20px;">2</div></div>',
+                offset: { x: 20, y: 50 }
               }
             }
           );
           
           map.Overlays.add(destinationMarker);
           console.log('✅ Destination marker added');
-        } else {
-          console.warn('⚠️ Invalid destination coordinates');
         }
+
+        // สร้างเส้นทางระหว่างจุดรับและจุดส่ง
+        if (isPickupValid && isDestValid) {
+          drawRoute(pickupLon, pickupLat, destLon, destLat);
+        }
+
+        // สร้างหมุดไรเดอร์ (จะอัพเดทตำแหน่งแบบเรียลไทม์)
+        createRiderMarker(centerLon, centerLat);
 
         console.log('🎉 Map initialization complete!');
         
       } catch (error) {
-        console.error('❌ Error initializing map:', error);
+        console.error('❌ Error:', error);
+      }
+    }
+
+    // ฟังก์ชันสร้างหมุดไรเดอร์
+    function createRiderMarker(lon, lat) {
+      riderMarker = new longdo.Marker(
+        { lon: lon, lat: lat },
+        {
+          title: '🏍️ ไรเดอร์',
+          detail: 'ตำแหน่งปัจจุบัน',
+          icon: {
+            html: '<div style="width:50px;height:50px;background:#4CAF50;border-radius:50%;border:4px solid white;box-shadow:0 4px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:24px;animation:pulse 2s infinite;">🏍️</div><style>@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}</style>',
+            offset: { x: 25, y: 25 }
+          }
+        }
+      );
+      map.Overlays.add(riderMarker);
+      console.log('✅ Rider marker created');
+    }
+
+    // ฟังก์ชันอัพเดทตำแหน่งไรเดอร์แบบเรียลไทม์
+    function updateRiderLocation(lon, lat) {
+      if (riderMarker) {
+        riderMarker.location({ lon: lon, lat: lat });
+        console.log('🔄 Rider position updated:', lon, lat);
+      }
+    }
+
+    // ฟังก์ชันวาดเส้นทาง
+    function drawRoute(fromLon, fromLat, toLon, toLat) {
+      try {
+        // ลบเส้นทางเก่า (ถ้ามี)
+        if (routeLayer) {
+          map.Overlays.remove(routeLayer);
+        }
+
+        // สร้างเส้นทางใหม่
+        routeLayer = new longdo.Polyline(
+          [
+            { lon: fromLon, lat: fromLat },
+            { lon: toLon, lat: toLat }
+          ],
+          {
+            title: 'เส้นทาง',
+            lineWidth: 5,
+            lineColor: 'rgba(103, 58, 183, 0.8)',
+            arrow: true
+          }
+        );
+        
+        map.Overlays.add(routeLayer);
+        console.log('✅ Route drawn');
+      } catch (error) {
+        console.error('❌ Error drawing route:', error);
       }
     }
   </script>
@@ -507,7 +577,6 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
 </html>
     ''';
   }
-  // ---------- ⬆️ [ส่วนแผนที่ที่แก้ไขแล้ว] ⬆️ ----------
 
   @override
   Widget build(BuildContext context) {
@@ -795,49 +864,142 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
 
   Widget _buildStatusButtons() {
     if (_currentStatus == 2) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => _takePhotoAndUpdateStatus(3),
-          icon: const Icon(Icons.camera_alt),
-          label: const Text(
-            'ถ่ายรูปยืนยันรับสินค้า',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
+      // คำนวณระยะห่างจากจุดรับ
+      double? distance;
+      if (_currentRiderLat != null && _currentRiderLon != null) {
+        distance = Geolocator.distanceBetween(
+          _currentRiderLat!,
+          _currentRiderLon!,
+          _pickupLat,
+          _pickupLon,
+        );
+      }
+
+      bool isNearPickup = distance != null && distance <= 20;
+
+      return Column(
+        children: [
+          if (!isNearPickup && distance != null)
+            Container(
+              padding: EdgeInsets.all(12),
+              margin: EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'คุณอยู่ห่างจากจุดรับ ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 20 เมตร',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isNearPickup
+                  ? () => _takePhotoAndUpdateStatus(3)
+                  : null, // ปิดปุ่มถ้าห่างเกิน 20 เมตร
+              icon: Icon(Icons.camera_alt),
+              label: Text(
+                isNearPickup
+                    ? 'ถ่ายรูปยืนยันรับสินค้า'
+                    : 'เข้าใกล้จุดรับเพื่อยืนยัน',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isNearPickup ? Colors.green : Colors.grey,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       );
-    } else if (_currentStatus == 3) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => _takePhotoAndUpdateStatus(4),
-          icon: const Icon(Icons.camera_alt),
-          label: const Text(
-            'ถ่ายรูปยืนยันส่งสินค้า',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF6F35A5),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30),
+    }
+    // เหมือนกันสำหรับ status == 3 (จุดส่ง)
+    else if (_currentStatus == 3) {
+      double? distance;
+      if (_currentRiderLat != null && _currentRiderLon != null) {
+        distance = Geolocator.distanceBetween(
+          _currentRiderLat!,
+          _currentRiderLon!,
+          _destinationLat,
+          _destinationLon,
+        );
+      }
+
+      bool isNearDestination = distance != null && distance <= 20;
+
+      return Column(
+        children: [
+          if (!isNearDestination && distance != null)
+            Container(
+              padding: EdgeInsets.all(12),
+              margin: EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'คุณอยู่ห่างจากจุดส่ง ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 20 เมตร',
+                      style: TextStyle(color: Colors.orange),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isNearDestination
+                  ? () => _takePhotoAndUpdateStatus(4)
+                  : null,
+              icon: Icon(Icons.camera_alt),
+              label: Text(
+                isNearDestination
+                    ? 'ถ่ายรูปยืนยันส่งสินค้า'
+                    : 'เข้าใกล้จุดส่งเพื่อยืนยัน',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isNearDestination
+                    ? Color(0xFF6F35A5)
+                    : Colors.grey,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       );
-    } else {
+    }
+    // Status 4: สำเร็จแล้ว
+    else {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.green.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
@@ -845,7 +1007,7 @@ class _PickupDetailPageState extends State<PickupDetailPage> {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
+          children: [
             Icon(Icons.check_circle, color: Colors.green, size: 28),
             SizedBox(width: 12),
             Text(
