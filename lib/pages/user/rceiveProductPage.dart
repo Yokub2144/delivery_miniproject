@@ -1,5 +1,7 @@
 import 'package:delivery_miniproject/pages/loadingPage.dart';
 import 'package:delivery_miniproject/pages/statusPage.dart';
+import 'package:delivery_miniproject/pages/user/Trackingrider_receiver.dart';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
@@ -98,9 +100,37 @@ class _ReceiveProductPageState extends State<ReceiveProductPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'รายการ',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween, // Align items
+              children: [
+                const Text(
+                  'รายการ',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                TextButton.icon(
+                  icon: Icon(
+                    Icons.map_outlined,
+                    size: 18,
+                    color: Colors.deepPurple,
+                  ),
+                  label: const Text(
+                    'ติดตามไรเดอร์',
+                    style: TextStyle(color: Colors.deepPurple),
+                  ),
+                  onPressed: () {
+                    Get.to(() => Trackingrider_receiver());
+                  },
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ), // Adjust padding
+                    // Add border or background if desired
+                    // side: BorderSide(color: Colors.deepPurple),
+                    // backgroundColor: Colors.deepPurple.withOpacity(0.1),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             StreamBuilder<QuerySnapshot>(
