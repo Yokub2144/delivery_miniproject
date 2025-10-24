@@ -259,7 +259,7 @@ class _PickupDetailPageState extends State<PickupDetailPage>
     if (!hasPermission || !mounted) return;
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5, // Using 5-meter filter from your original code
+      distanceFilter: 5, // อัปเดตทุก 5 เมตร
     );
     _positionStreamSubscription =
         Geolocator.getPositionStream(locationSettings: locationSettings).listen(
@@ -842,7 +842,7 @@ class _PickupDetailPageState extends State<PickupDetailPage>
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'คุณอยู่ห่างจากจุดรับ ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 50 เมตร',
+                      'คุณอยู่ห่างจากจุดรับ ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 20 เมตร',
                       style: TextStyle(color: Colors.orange.shade800),
                     ),
                   ),
@@ -880,7 +880,7 @@ class _PickupDetailPageState extends State<PickupDetailPage>
         _destinationLat,
         _destinationLon,
       );
-      final isNear = distance <= 50;
+      final isNear = distance <= 20; // ตรวจสอบระยะทางถึงจุดส่ง
 
       return Column(
         children: [
@@ -899,7 +899,7 @@ class _PickupDetailPageState extends State<PickupDetailPage>
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'คุณอยู่ห่างจากจุดส่ง ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 50 เมตร',
+                      'คุณอยู่ห่างจากจุดส่ง ${distance.toStringAsFixed(0)} ม.\nต้องเข้าใกล้ไม่เกิน 20 เมตร',
                       style: TextStyle(color: Colors.orange.shade800),
                     ),
                   ),
