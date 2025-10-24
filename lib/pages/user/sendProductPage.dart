@@ -1,3 +1,4 @@
+import 'package:delivery_miniproject/pages/loadingPage.dart';
 import 'package:delivery_miniproject/pages/user/trackingRider.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -36,7 +37,7 @@ class _SendProductPageState extends State<SendProductPage> {
         break;
       case 'logout':
         Get.offAll(
-          () => const LoginUserPage(),
+          () => const LoadingPage(),
         ); // ใช้ offAll เพื่อเคลียร์หน้าก่อนหน้า
         break;
     }

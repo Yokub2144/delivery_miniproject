@@ -5,19 +5,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get_storage/get_storage.dart'; // Assuming you use GetStorage for phone
 import 'package:longdo_maps_api3_flutter/longdo_maps_api3_flutter.dart';
 
-// Simple Rider model for displaying info
 class RiderInfo {
   final String id;
-  String name; // Make mutable to update
-  String phone; // Make mutable to update
-  String imageUrl; // Make mutable to update
-  GeoPoint? location; // Nullable location
+  String name;
+  String phone;
+  String imageUrl;
+  GeoPoint? location;
 
   RiderInfo({
     required this.id,
     this.name = 'Loading...',
     this.phone = 'Loading...',
-    this.imageUrl = '', // Default empty or placeholder URL
+    this.imageUrl = '',
     this.location,
   });
 }
@@ -37,15 +36,12 @@ class _TrackingriderState extends State<Trackingrider> {
   final _mapController = GlobalKey<LongdoMapState>();
   bool _isMapReady = false;
 
-  // State variables
-  List<String> _activeRiderIds = []; // List of Rider IDs to track
-  Map<String, RiderInfo> _riderData = {}; // Map riderId to RiderInfo
-  Map<String, dynamic> _riderMarkers =
-      {}; // Map riderId to Longdo Marker object
-  Map<String, StreamSubscription> _locationSubscriptions =
-      {}; // Manage listeners
-  RiderInfo? _selectedRider; // Rider whose info is currently displayed
-  bool _justClickedOverlay = false; // <-- Flag variable
+  List<String> _activeRiderIds = [];
+  Map<String, RiderInfo> _riderData = {};
+  Map<String, dynamic> _riderMarkers = {};
+  Map<String, StreamSubscription> _locationSubscriptions = {};
+  RiderInfo? _selectedRider;
+  bool _justClickedOverlay = false;
 
   @override
   void initState() {
@@ -55,20 +51,17 @@ class _TrackingriderState extends State<Trackingrider> {
       _fetchActiveRiders();
     } else {
       print("Error: Sender phone number not found.");
-      // Handle error, maybe show a message or navigate back
     }
   }
 
   @override
   void dispose() {
-    // Cancel all location stream subscriptions
     _locationSubscriptions.forEach((key, subscription) {
       subscription.cancel();
     });
     super.dispose();
   }
 
-  // 1. Fetch active shipments for the sender to find rider IDs
   Future<void> _fetchActiveRiders() async {
     if (senderPhone == null) return;
     print("Fetching active riders...");
@@ -77,10 +70,7 @@ class _TrackingriderState extends State<Trackingrider> {
       QuerySnapshot shipmentSnapshot = await _firestore
           .collection('Product')
           .where('senderPhone', isEqualTo: senderPhone)
-          .where(
-            'status',
-            whereIn: [2, 3],
-          ) // Status 2 (accepted) or 3 (picked up)
+          .where('status', whereIn: [2, 3])
           .get();
 
       Set<String> riderIds = {};
@@ -99,21 +89,17 @@ class _TrackingriderState extends State<Trackingrider> {
       List<String> currentSortedIds = List.from(_activeRiderIds)..sort();
       List<String> newSortedIds = List.from(newRiderIds)..sort();
 
-      // Use helper class for comparison
       if (!ListEquality().equals(currentSortedIds, newSortedIds)) {
         print("Rider list changed. Updating state and listeners.");
         setState(() {
           _activeRiderIds = newRiderIds;
-          // Remove data for riders no longer active
           _riderData.removeWhere(
             (key, value) => !_activeRiderIds.contains(key),
           );
-          // Remove markers for riders no longer active
           _riderMarkers.keys
               .where((key) => !_activeRiderIds.contains(key))
               .toList()
               .forEach(_removeMarker);
-          // Cancel subscriptions for riders no longer active
           _locationSubscriptions.keys
               .where((key) => !_activeRiderIds.contains(key))
               .toList()
@@ -122,14 +108,12 @@ class _TrackingriderState extends State<Trackingrider> {
                 _locationSubscriptions.remove(id);
                 print("Stopped listening for rider: $id");
               });
-          // Clear selected rider if they are no longer active
           if (_selectedRider != null &&
               !_activeRiderIds.contains(_selectedRider!.id)) {
             _selectedRider = null;
           }
         });
 
-        // Use addPostFrameCallback to ensure state update is complete
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _listenToRiderLocations();
@@ -138,12 +122,11 @@ class _TrackingriderState extends State<Trackingrider> {
         });
       } else {
         print("Rider list hasn't changed.");
-        // Even if list hasn't changed, ensure listeners and data are up-to-date
         _listenToRiderLocations();
-        _fetchInitialRiderData(); // Checks if data needs fetching
+        _fetchInitialRiderData();
         if (_isMapReady) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _updateAllMarkers(); // Ensure markers are correct
+            if (mounted) _updateAllMarkers();
           });
         }
       }
@@ -420,7 +403,6 @@ class _TrackingriderState extends State<Trackingrider> {
     String markerTitle = rider.name != 'Loading...' ? rider.name : riderId;
     String cleanImageUrl = rider.imageUrl; // Original URL from Firestore
 
-    // Use Cloudinary transformation for the icon URL
     String iconUrlToShow;
     if (cleanImageUrl.isNotEmpty &&
         cleanImageUrl.contains("res.cloudinary.com")) {

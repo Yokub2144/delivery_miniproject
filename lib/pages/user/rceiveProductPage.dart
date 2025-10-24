@@ -1,3 +1,4 @@
+import 'package:delivery_miniproject/pages/loadingPage.dart';
 import 'package:delivery_miniproject/pages/statusPage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -33,7 +34,7 @@ class _ReceiveProductPageState extends State<ReceiveProductPage> {
         Get.to(() => const Profilepage());
         break;
       case 'logout':
-        Get.offAll(() => const LoginUserPage());
+        Get.offAll(() => const LoadingPage());
         break;
     }
   }
