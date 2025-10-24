@@ -1,3 +1,4 @@
+import 'package:delivery_miniproject/pages/loadingPage.dart';
 import 'package:delivery_miniproject/pages/rider/EditRiderProfilePage.dart';
 import 'package:delivery_miniproject/pages/rider/PickupDetailPage%20.dart';
 import 'package:delivery_miniproject/pages/rider/viewRiderProfilePage.dart';
@@ -533,7 +534,7 @@ class _RiderMainPageState extends State<RiderMainPage> {
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const LoginRiderPage(),
+                        builder: (context) => const LoadingPage(),
                       ),
                       (Route<dynamic> route) => false,
                     );
