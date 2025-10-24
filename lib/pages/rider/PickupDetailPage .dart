@@ -88,8 +88,16 @@ class _PickupDetailPageState extends State<PickupDetailPage>
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
       debugPrint('🔄 App resumed');
-      if (_currentRiderLat != null && _currentRiderLon != null) {
-        _updateMapRiderPosition(_currentRiderLon!, _currentRiderLat!);
+      if (_currentRiderLat != null &&
+          _currentRiderLon != null &&
+          _webViewController != null &&
+          _isMapReady) {
+        // เมื่อแอปกลับมาทำงาน ให้ "วาป" ไปตำแหน่งล่าสุดเลย ไม่ต้องรอ
+        _webViewController!.runJavaScript('''
+          if (window.riderMarker) {
+            window.riderMarker.location({lon: $_currentRiderLon, lat: $_currentRiderLat});
+          }
+        ''');
       }
     }
   }
@@ -160,6 +168,11 @@ class _PickupDetailPageState extends State<PickupDetailPage>
             double newLng = (data['currentLng'] ?? 0.0).toDouble();
 
             if (mounted && newLat != 0.0 && newLng != 0.0) {
+              // ตรวจสอบว่าตำแหน่งมีการเปลี่ยนแปลงจริงหรือไม่
+              if (newLat == _currentRiderLat && newLng == _currentRiderLon) {
+                return; // ถ้าตำแหน่งเดิม ไม่ต้องทำอะไร
+              }
+
               // This is now the ONLY place we call setState for location
               setState(() {
                 _currentRiderLat = newLat;
@@ -178,45 +191,31 @@ class _PickupDetailPageState extends State<PickupDetailPage>
         });
   }
 
-  // ⭐⭐⭐ วิธีแก้ขั้นสุดท้าย: ลบแล้วสร้างใหม่ทุกครั้ง
+  // --- *** 🚗 แก้ไขหลัก (ทำให้สมูท) *** ---
+  // เราเปลี่ยนจากการ "ลบและสร้างใหม่" เป็นการ "ย้าย" (move)
   void _updateMapRiderPosition(double lon, double lat) {
     if (_webViewController == null || !_isMapReady) return;
     _webViewController!.runJavaScript(''' 
       (function() {
         try {
-          // ลบ marker เดิม
-          if (window.riderMarker) {
-            window.map.Overlays.remove(window.riderMarker);
-            window.riderMarker = null;
-          }
-          
-          // สร้าง marker ใหม่
-          window.riderMarker = new longdo.Marker(
-            {lon: $lon, lat: $lat},
-            {
-              title: '🏍️ ไรเดอร์',
-              detail: 'ตำแหน่งปัจจุบัน',
-              icon: {
-                html: '<div style="width:24px;height:24px;background:linear-gradient(135deg,#4CAF50,#66BB6A);border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(76,175,80,0.5);display:flex;align-items:center;justify-content:center;font-size:14px;animation:pulse 1.5s infinite;">🏍️</div><style>@keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.15);}}</style>',
-                offset: {x: 12, y: 12}
-              }
-            }
-          );
-          window.map.Overlays.add(window.riderMarker);
-          
-          if (window.DebugLog) {
-            window.DebugLog.postMessage('✅ Recreated at: ' + $lon + ', ' + $lat);
+          if (window.riderMarker && window.map) {
+            // ใช้ .move() เพื่อให้เกิด Animation
+            // move(location, autoZoom, duration_ms, onMoveEndCallback)
+            window.riderMarker.move({lon: $lon, lat: $lat}, false, 800); 
+          } else if (window.DebugLog) {
+            window.DebugLog.postMessage('❌ Marker not ready for move');
           }
         } catch(e) {
           if (window.DebugLog) {
-            window.DebugLog.postMessage('❌ Error: ' + e.message);
+            window.DebugLog.postMessage('❌ Error moving marker: ' + e.message);
           }
         }
       })();
     ''');
 
-    debugPrint('📍 Updated: $lon, $lat');
+    debugPrint('📍 Moved smoothly: $lon, $lat');
   }
+  // --- *** สิ้นสุดการแก้ไข *** ---
 
   void _calculateDistance() {
     if (_currentRiderLat == null || _currentRiderLon == null) return;
@@ -273,12 +272,6 @@ class _PickupDetailPageState extends State<PickupDetailPage>
             // 2. Schedule a throttled update (like in RiderMap)
             _scheduleFirestoreUpdate();
 
-            // 3. REMOVED all direct UI/Firestore updates from here
-            //    - REMOVED: setState(...)
-            //    - REMOVED: _updateRiderLocationToFirestore(...)
-            //    - REMOVED: _updateMapRiderPosition(...)
-            //    - REMOVED: _calculateDistance()
-
             debugPrint('📍 GPS: ${position.longitude}, ${position.latitude}');
           },
         );
@@ -332,9 +325,13 @@ class _PickupDetailPageState extends State<PickupDetailPage>
           if (mounted) {
             setState(() => _isMapReady = true);
 
-            // อัปเดตตำแหน่งเริ่มต้น
+            // อัปเดตตำแหน่งเริ่มต้น (ใช้ .location ธรรมดา ไม่ต้อง move)
             if (_currentRiderLat != null && _currentRiderLon != null) {
-              _updateMapRiderPosition(_currentRiderLon!, _currentRiderLat!);
+              _webViewController!.runJavaScript('''
+                if (window.riderMarker) {
+                  window.riderMarker.location({lon: $_currentRiderLon, lat: $_currentRiderLat});
+                }
+              ''');
             }
           }
         },
@@ -364,9 +361,7 @@ class _PickupDetailPageState extends State<PickupDetailPage>
     final double targetLon = _currentStatus == 2 ? _pickupLon : _destinationLon;
 
     // CHANGED: Using a proper, cross-platform Google Maps URL
-    final url = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=$targetLat,$targetLon',
-    );
+    final url = Uri.parse('http://googleusercontent.com/maps/google.com/1');
 
     try {
       if (await canLaunchUrl(url)) {
@@ -452,6 +447,7 @@ class _PickupDetailPageState extends State<PickupDetailPage>
     }
   }
 
+  // --- *** 📍 แก้ไขหลัก (เปลี่ยนไอคอน) *** ---
   String _buildMapHtml() {
     final double initialRiderLat = _currentRiderLat ?? _pickupLat;
     final double initialRiderLon = _currentRiderLon ?? _pickupLon;
@@ -465,6 +461,22 @@ class _PickupDetailPageState extends State<PickupDetailPage>
   <style>
     html, body { height: 100%; margin: 0; padding: 0; }
     #map { height: 100%; }
+
+    /* CSS Animation สำหรับไอคอนใหม่ (จุดกระพริบ) */
+    @keyframes pulseDot {
+      0% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(111, 53, 165, 0.7);
+      }
+      70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(111, 53, 165, 0);
+      }
+      100% {
+        transform: scale(0.9);
+        box-shadow: 0 0 0 0 rgba(111, 53, 165, 0);
+      }
+    }
   </style>
   <script src="https://api.longdo.com/map/?key=$longdoMapApiKey"></script>
 </head>
@@ -522,12 +534,13 @@ class _PickupDetailPageState extends State<PickupDetailPage>
           }));
         }
 
-        // ⭐ Rider Marker เริ่มต้น
+        // ⭐ Rider Marker เริ่มต้น (สร้างแค่ครั้งเดียว)
+        // นี่คือไอคอนใหม่ครับ!
         window.riderMarker = new longdo.Marker({lon: rider.lon, lat: rider.lat}, {
-          title: '🏍️ ไรเดอร์',
+          title: '📍 ไรเดอร์',
           icon: {
-            html: '<div style="width:24px;height:24px;background:linear-gradient(135deg,#4CAF50,#66BB6A);border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(76,175,80,0.5);display:flex;align-items:center;justify-content:center;font-size:14px;animation:pulse 1.5s infinite;">🏍️</div><style>@keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.15);}}</style>',
-            offset: {x: 12, y: 12}
+            html: '<div style="width:18px;height:18px;background-color:#6F35A5;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);animation:pulseDot 2s infinite;"></div>',
+            offset: {x: 9, y: 9} // ครึ่งนึงของ 18px
           }
         });
         window.map.Overlays.add(window.riderMarker);
@@ -544,6 +557,7 @@ class _PickupDetailPageState extends State<PickupDetailPage>
 </html>
     ''';
   }
+  // --- *** สิ้นสุดการแก้ไข *** ---
 
   // --- BUILD WIDGETS (โค้ดส่วน UI เหมือนเดิมทั้งหมด) ---
 
