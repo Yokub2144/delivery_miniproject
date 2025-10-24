@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:delivery_miniproject/pages/user/addAddressPage.dart';
 import 'package:path/path.dart' as p;
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:delivery_miniproject/pages/loginRiderPage.dart';
@@ -46,8 +47,9 @@ class _SignUpPageState extends State<SignUpPage>
   File? savedFile;
   File? imgProfile;
   File? imgCar;
-  String? imgProfileUrl; // จากเดิม File? imgProfile
+  String? imgProfileUrl;
   String? imgCarUrl;
+  String? _selectedAddress;
   final TextEditingController nameController = TextEditingController();
   final TextEditingController phoneController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
@@ -200,7 +202,40 @@ class _SignUpPageState extends State<SignUpPage>
             obscure: true,
           ),
           const SizedBox(height: 15),
-          _buildTextField(Icons.home, "ที่อยู่", controller: addressController),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.location_on_outlined),
+            label: Text(
+              _selectedAddress ??
+                  'กรุณาเลือกที่อยู่', // ถ้ายังไม่เลือก ให้แสดงข้อความนี้
+              overflow: TextOverflow.ellipsis,
+            ),
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      AddAddressPage(userPhoneNumber: phoneController.text),
+                ),
+              );
+              if (result != null && result is String) {
+                setState(() {
+                  _selectedAddress = result;
+                });
+              }
+            },
+            style: OutlinedButton.styleFrom(
+              // foregroundColor คือสีของไอคอนและข้อความ
+              foregroundColor: _selectedAddress != null
+                  ? Colors.black
+                  : Colors.grey[600],
+              // side คือเส้นขอบ
+              side: BorderSide(
+                color: _selectedAddress != null ? Colors.blue : Colors.grey,
+              ),
+              alignment: Alignment.centerLeft,
+              minimumSize: const Size(350, 50), // ให้ปุ่มกว้างเต็มจอ
+            ),
+          ),
           const SizedBox(height: 15),
           if (!isUser) ...[
             SizedBox(
@@ -264,7 +299,6 @@ class _SignUpPageState extends State<SignUpPage>
                       'name': nameController.text,
                       'phone': phone,
                       'password': passwordController.text,
-                      'address': addressController.text,
                       'imageUrl': imgProfileUrl ?? '',
                       'createdAt': FieldValue.serverTimestamp(),
                     };
@@ -274,7 +308,6 @@ class _SignUpPageState extends State<SignUpPage>
                       'name': nameController.text,
                       'phone': phone,
                       'password': passwordController.text,
-                      'address': addressController.text,
                       'imageUrl': imgProfileUrl ?? '',
                       'carImageUrl': imgCarUrl ?? '',
                       'imageUrl': imgProfileUrl ?? '',
