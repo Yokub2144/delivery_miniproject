@@ -248,8 +248,7 @@ class _SignUpPageState extends State<SignUpPage>
               onPressed: () async {
                 if (nameController.text.isEmpty ||
                     phoneController.text.isEmpty ||
-                    passwordController.text.isEmpty ||
-                    addressController.text.isEmpty) {
+                    passwordController.text.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("กรุณากรอกข้อมูลให้ครบ")),
                   );
