@@ -458,6 +458,8 @@ class _RiderMainPageState extends State<RiderMainPage> {
     return Scaffold(
       // --- (ข้อ 4.3) ปรับ UI AppBar ---
       appBar: AppBar(
+        automaticallyImplyLeading: false,
+
         title: const Text(
           'ไรเดอร์',
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),

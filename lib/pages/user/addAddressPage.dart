@@ -1,12 +1,12 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:delivery_miniproject/pages/user/profilePage.dart';
+import 'package:delivery_miniproject/pages/user/profilePage.dart'; // สมมติว่าไฟล์นี้มีอยู่
 import 'package:get/get.dart';
 import 'package:longdo_maps_api3_flutter/longdo_maps_api3_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart'; // ใช้ตัวนี้ ถูกต้องแล้ว
 
 class AddressModel {
   String id;
@@ -60,9 +60,9 @@ class _AddAddressPageState extends State<AddAddressPage> {
   Map<String, AddressModel> markerIdToAddress = {};
   Map<String, dynamic> addressIdToMarkerObject = {};
 
-  // --- vvv นี่คือตัวแปรสำหรับ "เลือก" ที่อยู่ vvv ---
   AddressModel? _selectedAddress;
-  // --- ^^^ นี่คือตัวแปรสำหรับ "เลือก" ที่อยู่ ^^^ ---
+  dynamic
+  _currentLocationMarker; // <-- NEW: ตัวแปรสำหรับเก็บหมุด "ตำแหน่งของฉัน"
 
   bool isLoading = false;
   bool isMapReady = false;
@@ -97,7 +97,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
 
   void _onFocusChanged() {
     if (!searchFocusNode.hasFocus && mounted) {
-      // ซ่อนคำแนะนำเมื่อออกจาก focus (หลังจาก delay เล็กน้อย)
       Future.delayed(const Duration(milliseconds: 200), () {
         if (mounted) {
           setState(() {
@@ -122,7 +121,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
       return;
     }
 
-    // Debounce เพื่อไม่ให้เรียก API บ่อยเกินไป
     _debounce = Timer(const Duration(milliseconds: 500), () {
       if (isMapReady && addressSearchController.text.length >= 2) {
         _getSuggestions(addressSearchController.text);
@@ -138,7 +136,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
         print('🔍 Getting suggestions for: "$keyword"');
       }
 
-      // ใช้วิธีง่ายๆ - เรียก Search.suggest แล้วใช้ event 'suggest' ที่มีอยู่แล้ว
       await map.currentState?.call("Search.suggest", args: [keyword]);
 
       if (kDebugMode) {
@@ -209,7 +206,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
         addressSearchController.text = name;
       }
 
-      // ซ่อนรายการแนะนำและยกเลิก focus
       if (mounted) {
         setState(() {
           showSuggestions = false;
@@ -218,7 +214,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
       }
       searchFocusNode.unfocus();
 
-      // เลื่อนแผนที่ไปยังตำแหน่งที่เลือก
       if (lat != null && lon != null && isMapReady) {
         map.currentState?.call(
           "location",
@@ -288,36 +283,140 @@ class _AddAddressPageState extends State<AddAddressPage> {
     }
   }
 
+  // --- vvv MODIFIED FUNCTION vvv ---
   Future<void> _requestLocationPermission() async {
-    var status = await Permission.location.status;
-    if (status.isDenied) {
-      status = await Permission.location.request();
+    if (!isMapReady) {
+      if (kDebugMode) print('Map not ready, skipping location request.');
+      return;
     }
 
-    if (status.isGranted) {
-      if (kDebugMode) {
-        print('Location Permission Granted. Moving map...');
+    try {
+      // 1. ตรวจสอบ Service
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (kDebugMode) print('Location services are disabled.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('กรุณาเปิด GPS (Location Services)')),
+          );
+        }
+        return;
       }
-      await Future.delayed(const Duration(milliseconds: 600));
-      map.currentState?.call(
-        "location",
-        args: [Longdo.LongdoStatic("LocationMode", "Geolocation"), true],
-      );
-      await Future.delayed(const Duration(milliseconds: 600));
-      await map.currentState?.call("zoom", args: [15, true]);
-    } else {
+
+      // 2. ตรวจสอบ Permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (kDebugMode) print('Location permissions are denied.');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('คุณปฏิเสธการเข้าถึงตำแหน่ง')),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (kDebugMode) print('Location permissions are permanently denied.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('คุณปิดการเข้าถึงตำแหน่งถาวร กรุณาไปที่การตั้งค่า'),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 3. ถ้าทุกอย่างผ่าน ดึงตำแหน่งจริง
       if (kDebugMode) {
-        print('Location Permission Denied.');
+        print('Location Permission Granted. Fetching current location...');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('กำลังค้นหาตำแหน่งของคุณ...')),
+      );
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      if (kDebugMode) {
+        print(
+          'Location Fetched: Lat: ${position.latitude}, Lon: ${position.longitude}',
+        );
+      }
+
+      if (!mounted) return; // <-- NEW: เช็คอีกครั้งหลัง await
+
+      // --- START: NEW CODE TO ADD MARKER ---
+
+      // 5. ลบหมุด "ตำแหน่งของฉัน" อันเก่า (ถ้ามี)
+      if (_currentLocationMarker != null) {
+        try {
+          await map.currentState?.call(
+            "Overlays.remove",
+            args: [_currentLocationMarker],
+          );
+          if (kDebugMode) print('Removed old current location marker.');
+        } catch (e) {
+          if (kDebugMode) print('Error removing old marker: $e');
+        }
+      }
+
+      // 6. สร้างหมุด "ตำแหน่งของฉัน" อันใหม่
+      var marker = Longdo.LongdoObject(
+        "Marker",
+        args: [
+          {'lon': position.longitude, 'lat': position.latitude},
+          {
+            'title': 'ตำแหน่งของคุณ',
+            'detail': 'คลิกที่แผนที่บริเวณนี้เพื่อปักหมุดบันทึก',
+            'icon': {
+              'url':
+                  'https://map.longdo.com/mmmap/images/pin_mark.png', // ไอคอนจุดสีฟ้า
+              'width': 24,
+              'height': 24,
+              'offset': {'x': 12, 'y': 12}, // จัดให้อยู่กึ่งกลาง
+            },
+          },
+        ],
+      );
+
+      // 7. เพิ่มหมุดใหม่ลงแผนที่
+      await map.currentState?.call("Overlays.add", args: [marker]);
+
+      // 8. เก็บหมุดใหม่ไว้ในตัวแปร
+      setState(() {
+        _currentLocationMarker = marker;
+      });
+
+      // --- END: NEW CODE ---
+
+      // 4. สั่งให้แผนที่เลื่อนไปที่พิกัดจริง (โค้ดเดิม)
+      await map.currentState?.call(
+        "location",
+        args: [
+          {'lon': position.longitude, 'lat': position.latitude},
+          true,
+        ],
+      );
+      await Future.delayed(const Duration(milliseconds: 400));
+      await map.currentState?.call("zoom", args: [16, true]); // ซูมเข้า
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error getting current location: $e');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('คุณไม่ได้อนุญาตให้เข้าถึงตำแหน่ง')),
+          SnackBar(content: Text('เกิดข้อผิดพลาดในการดึงตำแหน่ง: $e')),
         );
       }
     }
   }
+  // --- ^^^ MODIFIED FUNCTION ^^^ ---
 
-  // --- vvv นี่คือฟังก์ชัน loadAddresses ที่แก้ไขแล้ว vvv ---
   Future<void> loadAddresses() async {
     try {
       if (!mounted) return;
@@ -325,7 +424,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
 
       String? defaultId;
 
-      // 1. อ่านข้อมูล User หลักก่อน เพื่อหาว่า defaultAddressId คืออะไร
       final userDoc = await _firestore
           .collection('User')
           .doc(widget.userPhoneNumber)
@@ -333,11 +431,9 @@ class _AddAddressPageState extends State<AddAddressPage> {
 
       if (userDoc.exists && userDoc.data() != null) {
         final userData = userDoc.data() as Map<String, dynamic>;
-        // ดึงค่า defaultAddressId (อาจจะเป็น null ถ้ายังไม่เคยตั้ง)
         defaultId = userData['defaultAddressId'] as String?;
       }
 
-      // 2. อ่านที่อยู่ทั้งหมดจาก sub-collection (เหมือนเดิม)
       final collection = await _firestore
           .collection('User')
           .doc(widget.userPhoneNumber)
@@ -351,12 +447,10 @@ class _AddAddressPageState extends State<AddAddressPage> {
       AddressModel? defaultAddress;
       if (defaultId != null) {
         try {
-          // 3. ค้นหาที่อยู่เริ่มต้นจากในลิสต์ที่โหลดมา
           defaultAddress = loadedAddresses.firstWhere(
             (address) => address.id == defaultId,
           );
         } catch (e) {
-          // เกิดกรณีที่ defaultId มี แต่ที่อยู่ถูกลบไปแล้ว
           if (kDebugMode) {
             print('Default address ID $defaultId not found in sub-collection.');
           }
@@ -367,7 +461,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
       if (mounted) {
         setState(() {
           addresses = loadedAddresses;
-          // 4. ตั้งค่า _selectedAddress เป็นที่อยู่เริ่มต้นที่เจอ
           _selectedAddress = defaultAddress;
         });
       }
@@ -387,13 +480,13 @@ class _AddAddressPageState extends State<AddAddressPage> {
       }
     }
   }
-  // --- ^^^ นี่คือฟังก์ชัน loadAddresses ที่แก้ไขแล้ว ^^^ ---
 
   Future<void> addMarkersToMap() async {
     try {
       await map.currentState?.call("Overlays.clear");
       markerIdToAddress.clear();
       addressIdToMarkerObject.clear();
+      _currentLocationMarker = null; // <-- NEW: ล้างหมุดตำแหน่งปัจจุบันด้วย
 
       for (var address in addresses) {
         var marker = Longdo.LongdoObject(
@@ -434,6 +527,15 @@ class _AddAddressPageState extends State<AddAddressPage> {
 
     final double lat = data['lat']?.toDouble() ?? 0.0;
     final double lon = data['lon']?.toDouble() ?? 0.0;
+
+    // <-- NEW: เมื่อคลิกที่แผนที่ ให้ลบหมุดสีฟ้า "ตำแหน่งของฉัน" ออก
+    if (_currentLocationMarker != null) {
+      map.currentState?.call("Overlays.remove", args: [_currentLocationMarker]);
+      setState(() {
+        _currentLocationMarker = null;
+      });
+    }
+    // --- END NEW ---
 
     showDialog(
       context: context,
@@ -509,8 +611,18 @@ class _AddAddressPageState extends State<AddAddressPage> {
     final markerIdRaw = clickedMarkerObject['\$id'];
     if (markerIdRaw == null) return;
     final markerIdString = markerIdRaw.toString();
+
+    // <-- MODIFIED: เช็คว่าหมุดที่คลิกเป็น "ที่อยู่ที่บันทึกไว้" หรือไม่
     final addressToDelete = markerIdToAddress[markerIdString];
-    if (addressToDelete == null) return;
+
+    // ถ้าไม่ใช่ (เช่น เป็นหมุดสีฟ้า) ให้ออกจากฟังก์ชันเลย
+    if (addressToDelete == null) {
+      if (kDebugMode)
+        print(
+          'Clicked on a non-address marker (e.g. current location). Doing nothing.',
+        );
+      return;
+    }
 
     showDialog(
       context: context,
@@ -566,9 +678,7 @@ class _AddAddressPageState extends State<AddAddressPage> {
       if (mounted) {
         setState(() {
           addresses.add(newAddress);
-          // --- vvv เมื่อเพิ่มที่อยู่ใหม่ ให้เลือกที่อยู่นั้นทันที vvv ---
           _selectedAddress = newAddress;
-          // --- ^^^ เมื่อเพิ่มที่อยู่ใหม่ ให้เลือกที่อยู่นั้นทันที ^^^ ---
         });
       }
 
@@ -606,7 +716,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
   Future<void> searchAddress() async {
     if (addressSearchController.text.isEmpty) return;
 
-    // ซ่อนคำแนะนำ
     if (mounted) {
       setState(() {
         showSuggestions = false;
@@ -620,7 +729,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
           print('🔍 Searching for: "${addressSearchController.text}"');
         }
 
-        // ใช้ executeScript เพื่อเรียก JavaScript โดยตรง
         final script =
             '''
           (function() {
@@ -666,11 +774,9 @@ class _AddAddressPageState extends State<AddAddressPage> {
       if (mounted) {
         setState(() {
           addresses.removeWhere((address) => address.id == addressId);
-          // --- vvv ถ้าลบที่อยู่ที่กำลังเลือก ให้ยกเลิกการเลือก vvv ---
           if (_selectedAddress?.id == addressId) {
             _selectedAddress = null;
           }
-          // --- ^^^ ถ้าลบที่อยู่ที่กำลังเลือก ให้ยกเลิกการเลือก ^^^ ---
         });
       }
 
@@ -727,8 +833,10 @@ class _AddAddressPageState extends State<AddAddressPage> {
                             )
                           : null,
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
+                      filled: true,
+                      fillColor: Colors.white,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 12,
@@ -742,9 +850,9 @@ class _AddAddressPageState extends State<AddAddressPage> {
                   onPressed: searchAddress,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.deepPurple[400],
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                    padding: const EdgeInsets.all(14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: const Icon(Icons.search, color: Colors.white),
@@ -771,9 +879,7 @@ class _AddAddressPageState extends State<AddAddressPage> {
                             isMapReady = true;
                           });
                         }
-                        // --- vvv เรียก loadAddresses ที่แก้ไขแล้ว vvv ---
                         loadAddresses();
-                        // --- ^^^ เรียก loadAddresses ที่แก้ไขแล้ว ^^^ ---
                         _requestLocationPermission();
                       },
                     ),
@@ -785,7 +891,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
                       name: "overlayClick",
                       onMessageReceived: _handleOverlayClick,
                     ),
-                    // Channel สำหรับรับผลการ suggest
                     IJavascriptChannel(
                       name: "SuggestResult",
                       onMessageReceived: (message) {
@@ -795,7 +900,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
                         _handleSuggestResult(message);
                       },
                     ),
-                    // Channel สำหรับรับผลการ search
                     IJavascriptChannel(
                       name: "SearchResult",
                       onMessageReceived: (message) {
@@ -807,6 +911,22 @@ class _AddAddressPageState extends State<AddAddressPage> {
                     ),
                   ],
                 ),
+                // ปุ่มไปยังตำแหน่งปัจจุบัน
+                Positioned(
+                  bottom: 16,
+                  right: 16,
+                  child: FloatingActionButton(
+                    heroTag: 'currentLocation',
+                    onPressed: _requestLocationPermission,
+                    backgroundColor: Colors.white,
+                    elevation: 4,
+                    child: Icon(
+                      Icons.my_location,
+                      color: Colors.deepPurple[400],
+                      size: 28,
+                    ),
+                  ),
+                ),
                 // แสดงรายการคำแนะนำ
                 if (showSuggestions && searchSuggestions.isNotEmpty)
                   Positioned(
@@ -815,12 +935,12 @@ class _AddAddressPageState extends State<AddAddressPage> {
                     right: 12,
                     child: Material(
                       elevation: 8,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(12),
                       child: Container(
                         constraints: const BoxConstraints(maxHeight: 300),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: Colors.grey.shade300),
                         ),
                         child: ListView.separated(
@@ -893,16 +1013,25 @@ class _AddAddressPageState extends State<AddAddressPage> {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.deepPurple[50],
-            child: const Row(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.deepPurple[50],
+              border: Border(
+                top: BorderSide(color: Colors.deepPurple.shade100),
+              ),
+            ),
+            child: Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.deepPurple),
-                SizedBox(width: 8),
-                Expanded(
+                Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: Colors.deepPurple[700],
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
                   child: Text(
                     'จิ้มบนแผนที่เพื่อเพิ่มที่อยู่ หรือแตะหมุดเพื่อลบ',
-                    style: TextStyle(fontSize: 12),
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
@@ -923,19 +1052,16 @@ class _AddAddressPageState extends State<AddAddressPage> {
                       ],
                     ),
                   )
-                // --- vvv นี่คือ ListView.builder ที่แก้ไขแล้ว vvv ---
                 : ListView.builder(
                     itemCount: addresses.length,
                     itemBuilder: (context, index) {
                       final address = addresses[index];
-                      // ตรวจสอบว่ารายการนี้ถูกเลือกหรือไม่
                       final isSelected =
                           _selectedAddress != null &&
                           _selectedAddress!.id == address.id;
 
                       return InkWell(
                         onTap: () async {
-                          // 1. ตั้งค่าที่อยู่ท่ีเลือก
                           setState(() {
                             _selectedAddress = address;
                           });
@@ -947,7 +1073,6 @@ class _AddAddressPageState extends State<AddAddressPage> {
                           if (markerObject == null) return;
 
                           try {
-                            // 2. ย้ายแผนที่และแสดง popup (เหมือนเดิม)
                             await map.currentState?.call("Popup.hide");
                             await map.currentState?.call(
                               "location",
@@ -959,128 +1084,70 @@ class _AddAddressPageState extends State<AddAddressPage> {
                                 true,
                               ],
                             );
-                            await Future.delayed(
-                              const Duration(milliseconds: 600),
-                            );
-                            await map.currentState?.call(
-                              "zoom",
-                              args: [15, true],
-                            );
-                            await Future.delayed(
-                              const Duration(milliseconds: 400),
-                            );
-                            if (mounted) {
-                              map.currentState?.objectCall(
-                                markerObject,
-                                "popup",
-                              );
-                            }
                           } catch (e) {
                             if (kDebugMode) {
-                              print('Error: $e');
+                              print('Error moving map to selected address: $e');
                             }
                           }
                         },
-                        child: Card(
-                          // 3. เปลี่ยนสีพื้นหลังถ้าถูกเลือก
-                          color: isSelected ? Colors.deepPurple[100] : null,
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
+                        child: Container(
+                          color: isSelected
+                              ? Colors.deepPurple.shade100
+                              : Colors.transparent,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.deepPurple[400],
-                              child: const Icon(
-                                Icons.location_on,
-                                color: Colors.white,
-                                size: 20,
+                          child: Row(
+                            children: [
+                              Icon(
+                                address.label.toLowerCase().contains('บ้าน')
+                                    ? Icons.home
+                                    : address.label.toLowerCase().contains(
+                                        'ที่ทำงาน',
+                                      )
+                                    ? Icons.work
+                                    : Icons.location_on,
+                                color: Colors.deepPurple[400],
                               ),
-                            ),
-                            title: Text(
-                              address.label.isNotEmpty
-                                  ? address.label
-                                  : 'ที่อยู่ ${index + 1}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      address.label.isNotEmpty
+                                          ? address.label
+                                          : 'ที่อยู่',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      address.address,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[700],
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            subtitle: Text(
-                              address.address,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            // 4. เพิ่มไอคอนติ๊กถูกถ้าถูกเลือก
-                            trailing: isSelected
-                                ? Icon(
-                                    Icons.check_circle,
-                                    color: Colors.deepPurple[400],
-                                  )
-                                : null,
+                              if (isSelected)
+                                Icon(
+                                  Icons.check_circle,
+                                  color: Colors.deepPurple[400],
+                                ),
+                            ],
                           ),
                         ),
                       );
                     },
                   ),
-            // --- ^^^ นี่คือ ListView.builder ที่แก้ไขแล้ว ^^^ ---
-          ),
-          Container(
-            padding: const EdgeInsets.all(12.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple[400],
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                // --- vvv นี่คือปุ่ม "เสร็จสิ้น" ที่แก้ไขแล้ว vvv ---
-                onPressed: () async {
-                  if (_selectedAddress != null) {
-                    try {
-                      // 1. อัปเดต 'defaultAddressId' ในเอกสาร User
-                      await _firestore
-                          .collection('User')
-                          .doc(widget.userPhoneNumber)
-                          .update({'defaultAddressId': _selectedAddress!.id});
-
-                      if (mounted) {
-                        Get.to(() => Profilepage());
-                        // Navigator.pop(context, _selectedAddress);
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('เกิดข้อผิดพลาดในการบันทึก: $e'),
-                          ),
-                        );
-                      }
-                    }
-                  } else {
-                    // ถ้ายังไม่เลือก ให้แจ้งเตือน
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('กรุณาเลือกหรือเพิ่มที่อยู่ก่อน'),
-                      ),
-                    );
-                  }
-                },
-                // --- ^^^ นี่คือปุ่ม "เสร็จสิ้น" ที่แก้ไขแล้ว ^^^ ---
-                child: const Text(
-                  'เสร็จสิ้น',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
           ),
         ],
       ),
