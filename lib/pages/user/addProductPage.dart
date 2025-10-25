@@ -1,5 +1,7 @@
+import 'package:delivery_miniproject/pages/statusPage.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:get/get.dart';
 import 'package:longdo_maps_api3_flutter/longdo_maps_api3_flutter.dart';
 import 'package:flutter/foundation.dart';
 
@@ -252,14 +254,22 @@ class _AddproductpageState extends State<Addproductpage> {
       // --- ^^^ ADDED: Diagnostic logging ^^^ ---
 
       // 3. Save to the 'Product' collection
-      await _firestore.collection('Product').add(productData);
+      final DocumentReference newProductDoc = await _firestore
+          .collection('Product')
+          .add(productData);
+
+      final String newProductId = newProductDoc.id;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('เพิ่มรายการส่งสินค้าสำเร็จ!')),
       );
 
-      // Go back to the previous page after successful save
-      if (mounted) Navigator.of(context).pop();
+      Get.to(
+        () => StatusPage(
+          productId: newProductId,
+          userRole: UserRole.sender, // Sender role for this page
+        ),
+      );
     } catch (e) {
       ScaffoldMessenger.of(
         context,

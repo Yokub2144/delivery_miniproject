@@ -2,6 +2,7 @@ import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:delivery_miniproject/pages/user/addAddressPage.dart';
+import 'package:delivery_miniproject/pages/user/addAddressRegisPage.dart';
 import 'package:path/path.dart' as p;
 import 'package:cloudinary_public/cloudinary_public.dart';
 import 'package:delivery_miniproject/pages/loginRiderPage.dart';
@@ -201,7 +202,46 @@ class _SignUpPageState extends State<SignUpPage>
             controller: passwordController,
             obscure: true,
           ),
+          const SizedBox(height: 15),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.location_on_outlined),
+            label: Text(
+              _selectedAddress ??
+                  'กรุณาเลือกที่อยู่', // ถ้ายังไม่เลือก ให้แสดงข้อความนี้
+              overflow: TextOverflow.ellipsis,
+            ),
+            onPressed: () async {
+              // เมื่อกดปุ่ม ให้เรียกฟังก์ชันเปิดหน้าเลือกที่อยู่
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => Addaddressregispage(
+                    userPhoneNumber: phoneController.text,
+                  ),
+                ),
+              );
 
+              // ถ้ามีค่าส่งกลับมา (ผู้ใช้ไม่ได้กดย้อนกลับเฉยๆ)
+              if (result != null && result is String) {
+                // อัปเดตค่าใน state และสั่งให้ UI วาดใหม่
+                setState(() {
+                  _selectedAddress = result;
+                });
+              }
+            },
+            style: OutlinedButton.styleFrom(
+              // foregroundColor คือสีของไอคอนและข้อความ
+              foregroundColor: _selectedAddress != null
+                  ? Colors.black
+                  : Colors.grey[600],
+              // side คือเส้นขอบ
+              side: BorderSide(
+                color: _selectedAddress != null ? Colors.blue : Colors.grey,
+              ),
+              alignment: Alignment.centerLeft,
+              minimumSize: const Size(360, 50), // ให้ปุ่มกว้างเต็มจอ
+            ),
+          ),
           const SizedBox(height: 15),
           if (!isUser) ...[
             SizedBox(
@@ -266,7 +306,9 @@ class _SignUpPageState extends State<SignUpPage>
                       'password': passwordController.text,
                       'imageUrl': imgProfileUrl ?? '',
                       'createdAt': FieldValue.serverTimestamp(),
+                      'defaultAddressId': _selectedAddress ?? '',
                     };
+                    log(_selectedAddress.toString());
                     await db.collection('User').doc(phone).set(data);
                   } else {
                     var data = {
